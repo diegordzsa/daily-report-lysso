@@ -1,4 +1,4 @@
-import { SHOPIFY_STORE_DOMAIN, SHOPIFY_API_VERSION } from './config.js';
+import { SHOPIFY_STORE_DOMAIN, SHOPIFY_API_VERSION, SHOPIFY_ACCESS_TOKEN } from './config.js';
 
 export function getYesterday() {
   const d = new Date();
@@ -27,8 +27,14 @@ async function getAccessToken(clientId, clientSecret) {
 }
 
 export async function fetchShopifyOrders(clientId, clientSecret) {
-  const accessToken = await getAccessToken(clientId, clientSecret);
-  console.log(`[Shopify] Access token obtained`);
+  let accessToken;
+  if (SHOPIFY_ACCESS_TOKEN) {
+    accessToken = SHOPIFY_ACCESS_TOKEN;
+    console.log(`[Shopify] Using direct access token`);
+  } else {
+    accessToken = await getAccessToken(clientId, clientSecret);
+    console.log(`[Shopify] Access token obtained via client_credentials`);
+  }
 
   const yesterday = getYesterday();
   const twoDaysAgo = new Date(yesterday);

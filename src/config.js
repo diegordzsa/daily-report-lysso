@@ -27,8 +27,9 @@ export const STORE_NAME = required('STORE_NAME');
 export const META_ACCESS_TOKEN = required('META_ACCESS_TOKEN');
 export const META_AD_ACCOUNT_ID = required('META_AD_ACCOUNT_ID');
 export const SHOPIFY_STORE_DOMAIN = required('SHOPIFY_STORE_DOMAIN');
-export const SHOPIFY_CLIENT_ID = required('SHOPIFY_CLIENT_ID');
-export const SHOPIFY_CLIENT_SECRET = required('SHOPIFY_CLIENT_SECRET');
+export const SHOPIFY_ACCESS_TOKEN = optional('SHOPIFY_ACCESS_TOKEN');
+export const SHOPIFY_CLIENT_ID = optional('SHOPIFY_CLIENT_ID');
+export const SHOPIFY_CLIENT_SECRET = optional('SHOPIFY_CLIENT_SECRET');
 export const ANTHROPIC_API_KEY = required('ANTHROPIC_API_KEY');
 export const SLACK_WEBHOOK_URL = required('SLACK_WEBHOOK_URL');
 

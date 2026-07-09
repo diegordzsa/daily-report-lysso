@@ -37,7 +37,7 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
           # --- Opcionales ---
-          STORE_CURRENCY: '$'
+          STORE_CURRENCY: '€'
           STORE_LOCALE: 'es-MX'
           REPORT_TIME_LABEL: '5:00 AM'
           # STORE_INDUSTRY: ''

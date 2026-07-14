@@ -32,7 +32,8 @@ METRICAS PAID (Meta Ads):
 - Add to Carts: ${metrics.addToCarts}
 - Checkouts Iniciados: ${metrics.checkoutsInitiated}
 - Compras (atribuidas Meta): ${metrics.metaOrders}
-- ROAS Meta: ${metrics.metaROAS.toFixed(2)}x
+- ROAS Meta (pixel): ${metrics.metaROAS.toFixed(2)}x
+- MER-ROAS (Shopify revenue / ad spend): ${metrics.merROAS.toFixed(2)}x
 - CTR: ${metrics.ctr.toFixed(2)}%
 - Add to Cart Rate: ${metrics.addToCartRate.toFixed(2)}%
 - Checkout Rate: ${metrics.checkoutRate.toFixed(2)}%
@@ -46,7 +47,8 @@ METRICAS SHOPIFY (fuente de verdad):
 Identifica en 3-4 lineas:
 1. Cual es el punto mas debil del funnel hoy y por que
 ${buildRoasInstruction()}
-3. Una accion concreta que se deberia tomar hoy
+3. Si hay discrepancia significativa entre el ROAS Meta y el MER-ROAS, que implica
+4. Una accion concreta que se deberia tomar hoy
 
 Responde en espanol, directo, sin introducciones.`;
 

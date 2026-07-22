@@ -45,7 +45,8 @@ async function run() {
       const rate = fxData.rates?.EUR;
       if (rate) {
         metrics.adSpendEUR = metrics.adSpend * rate;
-        console.log(`[FX] USD→EUR rate=${rate}, adSpendEUR=${metrics.adSpendEUR.toFixed(2)}`);
+        metrics.merROAS = metrics.adSpendEUR > 0 ? metrics.shopifyRevenue / metrics.adSpendEUR : 0;
+        console.log(`[FX] USD→EUR rate=${rate}, adSpendEUR=${metrics.adSpendEUR.toFixed(2)}, merROAS=${metrics.merROAS.toFixed(2)}`);
       }
     }
   } catch (err) {

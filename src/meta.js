@@ -1,4 +1,4 @@
-import { META_AD_ACCOUNT_ID, META_API_VERSION } from './config.js';
+import { META_AD_ACCOUNT_ID, META_API_VERSION, REPORT_DATE } from './config.js';
 
 const ACTION_MAP = {
   'link_click': 'actions_link_click',
@@ -31,10 +31,15 @@ export async function fetchMetaAds(accessToken) {
   const fields = 'spend,impressions,clicks,actions,action_values,cpc,cpm,ctr,frequency';
   const params = new URLSearchParams({
     access_token: accessToken,
-    date_preset: 'yesterday',
     level: 'account',
     fields,
   });
+
+  if (REPORT_DATE) {
+    params.set('time_range', JSON.stringify({ since: REPORT_DATE, until: REPORT_DATE }));
+  } else {
+    params.set('date_preset', 'yesterday');
+  }
 
   const url = `https://graph.facebook.com/${META_API_VERSION}/act_${META_AD_ACCOUNT_ID}/insights?${params}`;
 
@@ -54,6 +59,9 @@ export async function fetchMetaAds(accessToken) {
 
   const data = json.data || [];
   console.log(`[Meta] Got ${data.length} rows`);
+  for (const row of data) {
+    console.log(`[Meta] date=${row.date_start} raw spend=${row.spend}`);
+  }
 
   if (data.length === 0) return [];
 

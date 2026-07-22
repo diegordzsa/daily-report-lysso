@@ -38,6 +38,20 @@ async function run() {
 
   const metrics = calculateMetrics(metaData, shopifyData);
 
+  try {
+    const fxRes = await fetch('https://api.frankfurter.app/latest?from=USD&to=EUR');
+    if (fxRes.ok) {
+      const fxData = await fxRes.json();
+      const rate = fxData.rates?.EUR;
+      if (rate) {
+        metrics.adSpendEUR = metrics.adSpend * rate;
+        console.log(`[FX] USD→EUR rate=${rate}, adSpendEUR=${metrics.adSpendEUR.toFixed(2)}`);
+      }
+    }
+  } catch (err) {
+    console.warn('[FX] Exchange rate fetch failed:', err.message);
+  }
+
   const subDebug = metrics.subscriptionCounts.map(s => `${s.label}: ${s.count}`).join(', ');
   console.log(`[Debug] Orders: ${metrics.shopifyOrders}, Net Sales: ${metrics.shopifyRevenue.toFixed(2)}${subDebug ? `, ${subDebug}` : ''}`);
 

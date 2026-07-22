@@ -1,6 +1,7 @@
-import { SHOPIFY_STORE_DOMAIN, SHOPIFY_API_VERSION, SHOPIFY_ACCESS_TOKEN } from './config.js';
+import { SHOPIFY_STORE_DOMAIN, SHOPIFY_API_VERSION, SHOPIFY_ACCESS_TOKEN, REPORT_DATE } from './config.js';
 
 export function getYesterday() {
+  if (REPORT_DATE) return REPORT_DATE;
   const d = new Date();
   d.setDate(d.getDate() - 1);
   return d.toISOString().slice(0, 10);

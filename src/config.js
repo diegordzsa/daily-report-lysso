@@ -41,4 +41,5 @@ export const REPORT_TIME_LABEL = optional('REPORT_TIME_LABEL', '5:00 AM');
 export const META_API_VERSION = optional('META_API_VERSION', 'v21.0');
 export const SHOPIFY_API_VERSION = optional('SHOPIFY_API_VERSION', '2024-10');
 export const CLAUDE_MODEL = optional('CLAUDE_MODEL', 'claude-sonnet-4-6');
+export const REPORT_DATE = optional('REPORT_DATE');
 export const SUBSCRIPTION_TAGS = parseSubscriptionTags(optional('SUBSCRIPTION_TAGS'));

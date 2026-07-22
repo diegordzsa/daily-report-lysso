@@ -2,12 +2,14 @@ name: Daily Report
 
 on:
   schedule:
-    # Hora UTC. Ejemplos:
-    #   '0 3 * * *'  = 3:00 UTC = 5:00 CEST (Madrid verano)
-    #   '0 12 * * *' = 12:00 UTC = 7:00 CDT (Mexico verano)
-    #   '0 13 * * *' = 13:00 UTC = 8:00 EST (Nueva York invierno)
-    - cron: '0 3 * * *'
+    # Hora UTC — Meta necesita ~7h tras medianoche para finalizar spend.
+    #   '0 7 * * *'  = 7:00 UTC = 9:00 CEST (Madrid verano) / 8:00 CET (invierno)
+    - cron: '0 7 * * *'
   workflow_dispatch:
+    inputs:
+      date:
+        description: 'Override report date (YYYY-MM-DD). Leave empty for yesterday.'
+        required: false
 
 jobs:
   report:
@@ -39,11 +41,12 @@ jobs:
           # --- Opcionales ---
           STORE_CURRENCY: '€'
           STORE_LOCALE: 'es-MX'
-          REPORT_TIME_LABEL: '5:00 AM'
+          REPORT_TIME_LABEL: '9:00 AM'
           # STORE_INDUSTRY: ''
           # ROAS_BENCHMARK: ''
           # META_API_VERSION: 'v21.0'
           # SHOPIFY_API_VERSION: '2024-10'
           # CLAUDE_MODEL: 'claude-sonnet-4-6'
           # SUBSCRIPTION_TAGS: '[{"tag":"Kaching Subscription First Order","label":"1ª Susc"},{"tag":"appstle_subscription_recurring_order","label":"Recurrentes"}]'
+          REPORT_DATE: ${{ github.event.inputs.date }}
         run: node src/report.js

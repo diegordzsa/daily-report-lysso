@@ -73,7 +73,8 @@ Responde en espanol, directo, sin introducciones.`;
 
   const message = await client.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 300,
+    // 300 cortaba la respuesta a media frase: el prompt pide cuatro puntos.
+    max_tokens: 700,
     messages: [{ role: 'user', content: prompt }],
   });
 

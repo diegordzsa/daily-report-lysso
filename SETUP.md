@@ -1,173 +1,217 @@
-# Guia de Configuracion — Daily Report Template
+# Reporte Diario — Lyssoderma
 
-Este template genera un reporte diario automatico que combina datos de **Meta Ads** y **Shopify**, genera un diagnostico con **Claude AI**, y lo envia a **Slack**.
-
----
-
-## Checklist Rapido
-
-1. Crear un nuevo repo en GitHub usando este template
-2. Configurar los 8 secretos requeridos en GitHub (Settings > Secrets and variables > Actions)
-3. Ajustar la hora del cron en `.github/workflows/daily-report.yml` segun tu timezone
-4. (Opcional) Descomentar y configurar variables opcionales en el workflow
-5. Probar ejecutando el workflow manualmente (Actions > Daily Report > Run workflow)
+Combina datos de **Meta Ads** y **Shopify**, genera un diagnostico con **Claude** y
+lo publica en Slack (`#reporte-diario-lysso`).
 
 ---
 
-## Secretos Requeridos
+## Ficha de la tienda
 
-Configura estos 8 secretos en tu repositorio de GitHub:
-**Settings > Secrets and variables > Actions > New repository secret**
+Todo lo de esta tabla esta **medido contra las APIs** el 2026-07-29, no copiado de
+otro repo. Si algo de aqui cambia, hay que volver a medirlo, no adivinarlo.
 
-### `STORE_NAME`
-Nombre de tu tienda que aparecera en el reporte de Slack.
-- Ejemplo: `Mi Tienda ES`, `Brand MX`, `Store US`
-
-### `META_ACCESS_TOKEN`
-Token de acceso de la Marketing API de Meta (Facebook/Instagram Ads).
-
-**Como obtenerlo:**
-1. Ve a [Meta Business Suite](https://business.facebook.com) > Business Settings
-2. En el menu izquierdo: **Users > System Users**
-3. Si no tienes un System User, crea uno con rol Admin
-4. Haz clic en el System User > **Generate New Token**
-5. Selecciona tu app y el permiso `ads_read`
-6. Copia el token generado
-
-> **Nota:** Los tokens de System User no expiran. Los tokens de usuario normal expiran en ~60 dias.
-
-### `META_AD_ACCOUNT_ID`
-El ID numerico de tu cuenta de anuncios de Meta (sin el prefijo `act_`).
-
-**Como obtenerlo:**
-1. Ve a [Meta Business Suite](https://business.facebook.com) > Business Settings
-2. En el menu izquierdo: **Accounts > Ad Accounts**
-3. Selecciona tu cuenta de anuncios
-4. Copia el **Account ID** (solo los numeros, sin `act_`)
-- Ejemplo: `2217973965310655`
-
-### `SHOPIFY_STORE_DOMAIN`
-El dominio `.myshopify.com` de tu tienda.
-
-**Como obtenerlo:**
-1. Ve al admin de tu tienda Shopify
-2. El dominio esta en la URL: `https://TU-TIENDA.myshopify.com/admin`
-3. Copia solo la parte `tu-tienda.myshopify.com`
-- Ejemplo: `mi-tienda.myshopify.com`
-
-### `SHOPIFY_CLIENT_ID` y `SHOPIFY_CLIENT_SECRET`
-Credenciales de una Custom App de Shopify con acceso a la Admin API.
-
-**Como obtenerlos:**
-1. Ve a [Shopify Partners](https://partners.shopify.com) o al **Dev Dashboard** de tu tienda
-2. Crea una nueva app (Custom App)
-3. En **API credentials**, configura los scopes de Admin API:
-   - `read_orders` (requerido)
-4. Instala la app en tu tienda
-5. Copia el **Client ID** y **Client Secret** de la seccion de credenciales
-
-> **Importante:** Esta app usa `client_credentials` grant (no requiere un token estatico `shpat_`). Solo necesitas el Client ID y Client Secret.
-
-### `ANTHROPIC_API_KEY`
-API key de Anthropic para usar Claude.
-
-**Como obtenerla:**
-1. Ve a [console.anthropic.com](https://console.anthropic.com)
-2. Inicia sesion o crea una cuenta
-3. Ve a **API Keys** en el menu
-4. Crea una nueva key y copiala
-- Formato: `sk-ant-api03-...`
-
-### `SLACK_WEBHOOK_URL`
-URL de Incoming Webhook de Slack para enviar el reporte.
-
-**Como obtenerlo:**
-1. Ve a [api.slack.com/apps](https://api.slack.com/apps)
-2. Crea una nueva app (From scratch) o usa una existente
-3. En el menu izquierdo: **Incoming Webhooks**
-4. Activa los webhooks (toggle ON)
-5. Haz clic en **Add New Webhook to Workspace**
-6. Selecciona el canal donde quieres recibir el reporte
-7. Copia la **Webhook URL**
-- Formato: `https://hooks.slack.com/services/T.../B.../...`
-
----
-
-## Variables Opcionales
-
-Estas variables tienen valores por defecto. Para cambiarlas, descomenta las lineas correspondientes en `.github/workflows/daily-report.yml`.
-
-| Variable | Default | Cuando cambiar |
+| Dato | Valor | Como se midio |
 |---|---|---|
-| `STORE_CURRENCY` | `€` | Si tu tienda usa otra moneda (`$`, `£`, `MX$`) |
-| `STORE_LOCALE` | `es-ES` | Si necesitas otro formato de numeros (`en-US`, `es-MX`, `pt-BR`) |
-| `STORE_INDUSTRY` | _(vacio)_ | Para benchmarks especificos en el diagnostico de Claude |
-| `ROAS_BENCHMARK` | _(vacio)_ | Para que Claude compare contra un benchmark de tu industria |
-| `REPORT_TIME_LABEL` | `5:00 AM` | Si cambias la hora del cron, actualiza esto para que coincida |
-| `META_API_VERSION` | `v21.0` | Si Meta depreca esta version |
-| `SHOPIFY_API_VERSION` | `2024-10` | Si Shopify depreca esta version |
-| `CLAUDE_MODEL` | `claude-sonnet-4-6` | Para usar otro modelo de Claude |
+| Cuenta Meta | `EASY_02` | `GET /act_<id>?fields=name` |
+| TZ cuenta Meta | `Europe/Madrid` (**con DST**) | `timezone_name` |
+| Offset en verano | UTC+2 | `timezone_offset_hours_utc` |
+| Moneda Meta | **USD** | `currency` |
+| Tienda Shopify | `SKIN+ EUR` / `lyssoderma.com` | `GET /shop.json` |
+| TZ Shopify | `Europe/Madrid` | `iana_timezone` |
+| Moneda Shopify | **EUR** | `currency`, `money_format` |
+| Cierre del dia | 00:00 Madrid = 22:00 UTC verano / 23:00 UTC invierno | calculado |
+| `MIN_HOURS_AFTER_CLOSE` | 3 | politica |
+| Entrega | **09:00 Europe/Madrid** = 9 h post-cierre | decidido, ver abajo |
+| Deriva medida a 11.1-12.8 h | −0.00 % a −0.18 % | logs vs. consolidado |
+| Retraso del cron de GitHub | +2 h 05 min a +3 h 49 min | 7 ejecuciones |
+
+**Las dos monedas no coinciden.** Meta gasta en USD y la tienda factura en EUR. El
+gasto, el CPO y el revenue atribuido salen en USD; el revenue neto y el AOV en EUR.
+Solo el gasto se convierte a EUR, para poder cruzarlo con el revenue en el MER-ROAS.
 
 ---
 
-## Subscription Tags (Opcional)
+## Timezone, cierre del dia y por que la entrega es a las 09:00
 
-Si tu tienda tiene suscripciones y quieres trackearlas en el reporte, configura la variable `SUBSCRIPTION_TAGS` con un JSON array.
+Meta **sigue agregando gasto durante horas** despues de que el dia cierra en la
+timezone de la cuenta publicitaria. Publicar antes de tiempo da un gasto
+subestimado, que infla ROAS y MER. Preferimos no publicar a publicar mal.
 
-Cada entrada tiene:
-- `tag`: El tag exacto que Shopify pone en las ordenes de suscripcion
-- `label`: El nombre que aparecera en el reporte
+1. **Cierre del dia**: la cuenta esta en `Europe/Madrid`, asi que el dia cierra a
+   las 00:00 de Madrid — 22:00 UTC en verano, 23:00 UTC en invierno.
+2. **Hora mas temprana defendible**: cierre + `MIN_HOURS_AFTER_CLOSE` (3 h) =
+   **03:00 Madrid**.
+3. **Entrega elegida**: **09:00 Madrid**, o sea **9 h despues del cierre**, el
+   triple del minimo.
 
-**Ejemplo:**
+Aqui hubo suerte: la cuenta de Meta, la tienda y quien lee el reporte estan **los
+tres en `Europe/Madrid`**, asi que el cambio de horario se cancela solo y las 09:00
+son siempre 9 h post-cierre, en enero igual que en julio. Por eso el cron externo
+se configura **en la zona `Europe/Madrid`, nunca en UTC**: en UTC habria que
+moverlo dos veces al ano (07:00 verano / 08:00 invierno).
+
+En los dos dias del ano en que cambia la hora la entrega cae a 8 h post-cierre
+(salto de primavera) o 10 h (salto de otono). Las dos siguen muy por encima del
+minimo de 3 h.
+
+**Lo que no esta medido:** la deriva de consolidacion se midio entre 11.1 h y
+12.8 h post-cierre, donde el error es de −0.18 % como maximo y ya plano. Las 9 h de
+la entrega estan **extrapoladas** desde ahi, no medidas directamente. Si en algun
+momento se quiere adelantar la entrega, hay que medir primero con un probe (ver
+abajo), no bajarla por corazonada.
+
+---
+
+## El guard de frescura
+
+`src/report.js` comprueba, **antes de pedir cualquier dato**, cuantas horas lleva
+cerrado el dia que va a reportar. Lee `timezone_name` de la API de Meta en cada
+ejecucion (con `META_ACCOUNT_TIMEZONE` como fallback si la llamada falla).
+
+Si no llega a `MIN_HOURS_AFTER_CLOSE`, avisa en Slack y sale con `exit 1`, para que
+se vea en rojo en Actions. Ejemplo real de una ejecucion a las 00:26 Madrid:
+
 ```
-SUBSCRIPTION_TAGS: '[{"tag":"Kaching Subscription First Order","label":"1ª Susc"},{"tag":"appstle_subscription_recurring_order","label":"Recurrentes"}]'
+[Freshness] 2026-07-29 cerro hace 0.45 h en Europe/Madrid (minimo requerido: 3 h)
+Datos de Meta sin consolidar: solo han pasado 0.4 h desde el cierre, el minimo es 3 h
+##[error]Process completed with exit code 1
 ```
 
-Si no defines `SUBSCRIPTION_TAGS` o lo dejas vacio, las metricas de suscripcion simplemente no aparecen en el reporte.
+El calculo del instante de cierre esta en `src/freshness.js` y usa
+`Intl.DateTimeFormat`, correcto en los cambios de horario.
 
 ---
 
-## Timezone y Cron
+## Por que no hay cron de GitHub
 
-El cron de GitHub Actions usa UTC. Ajusta la expresion segun tu zona horaria:
+**El scheduler de GitHub Actions no sirve para una hora fija.** Medido en este
+repo, 7 ejecuciones del cron `0 7 * * *` entre el 23 y el 29 de julio de 2026:
 
-| Hora local deseada | Timezone | Cron UTC |
+| Fecha | Arranque real UTC | Retraso |
 |---|---|---|
-| 5:00 AM | Madrid (CEST, verano) | `0 3 * * *` |
-| 5:00 AM | Madrid (CET, invierno) | `0 4 * * *` |
-| 7:00 AM | Mexico City (CDT, verano) | `0 12 * * *` |
-| 7:00 AM | Mexico City (CST, invierno) | `0 13 * * *` |
-| 8:00 AM | Nueva York (EDT, verano) | `0 12 * * *` |
-| 8:00 AM | Nueva York (EST, invierno) | `0 13 * * *` |
-| 9:00 AM | Buenos Aires (ART) | `0 12 * * *` |
+| 07-23 | 09:29:36 | +2 h 29 min |
+| 07-24 | 09:26:53 | +2 h 26 min |
+| 07-25 | 09:05:31 | +2 h 05 min |
+| 07-26 | 09:20:22 | +2 h 20 min |
+| 07-27 | 10:49:22 | **+3 h 49 min** |
+| 07-28 | 09:41:33 | +2 h 41 min |
+| 07-29 | 09:43:52 | +2 h 43 min |
 
-Edita la linea `cron:` en `.github/workflows/daily-report.yml`.
+Casi dos horas de diferencia entre el dia mas puntual y el mas tarde, sin patron.
+El bloque `schedule:` esta eliminado del workflow; solo queda `workflow_dispatch`.
 
-> **Nota:** GitHub Actions puede tener un retraso de hasta 15 minutos en los cron jobs.
+### Disparo externo (cron-job.org)
+
+- **Nombre**: `Lysso reporte diario`
+- **URL**: `https://api.github.com/repos/diegordzsa/daily-report-lysso/actions/workflows/daily-report.yml/dispatches`
+- **Method**: `POST`
+- **Body**: `{"ref":"main"}`
+- **Headers**:
+  - `Accept: application/vnd.github+json`
+  - `Authorization: Bearer <PAT existente>`
+  - `X-GitHub-Api-Version: 2022-11-28`
+  - `Content-Type: application/json`
+- **Schedule**: modo *Custom*, timezone **`Europe/Madrid`**, `0 9 * * *`
+  (MINUTES con **un solo valor**; si queda en *every* dispara 60 veces al dia)
+- **Respuesta correcta**: `204 No Content`
+  · `401` = token mal copiado · `403` = falta permiso *Actions: Read and write*
+  · `404` = URL con errata
+- Activar **aviso por email al fallar**: sin cron de GitHub no hay red de seguridad.
+
+Se reutiliza el PAT que ya existe en cron-job.org, con acceso a todos los repos.
+No hace falta crear uno nuevo.
 
 ---
 
-## Probar el Reporte
+## Secretos requeridos
 
-1. Ve a tu repositorio en GitHub
-2. Haz clic en la pestana **Actions**
-3. Selecciona el workflow **Daily Report**
-4. Haz clic en **Run workflow** > **Run workflow**
-5. Espera a que termine y revisa el canal de Slack
+Son **7**, en *Settings > Secrets and variables > Actions*:
 
-Si falla, haz clic en el job para ver los logs y el mensaje de error.
+| Secreto | Notas |
+|---|---|
+| `STORE_NAME` | Nombre que aparece en el reporte |
+| `META_ACCESS_TOKEN` | Token de System User (no expira). Permiso `ads_read` |
+| `META_AD_ACCOUNT_ID` | Numerico, sin el prefijo `act_` |
+| `SHOPIFY_STORE_DOMAIN` | `xxx.myshopify.com` |
+| `SHOPIFY_ACCESS_TOKEN` | Token **offline** (`shpat_...`), ver abajo |
+| `ANTHROPIC_API_KEY` | `sk-ant-api03-...` |
+| `SLACK_WEBHOOK_URL` | Incoming webhook del canal `#reporte-diario-lysso` |
+
+### Sobre el token de Shopify
+
+La app de Shopify y la tienda estan en **organizaciones distintas**, asi que el
+grant `client_credentials` **no funciona** aqui. El token es uno *offline* obtenido
+por authorization code grant:
+
+1. El dueno de la tienda abre la URL de autorizacion y aprueba la app.
+2. Devuelve la URL de callback, que trae un parametro `code`.
+3. `SHOPIFY_CLIENT_ID=... SHOPIFY_CLIENT_SECRET=... SHOPIFY_STORE_DOMAIN=... node exchange-token.js <code>`
+4. El token que imprime se guarda como `SHOPIFY_ACCESS_TOKEN`.
+
+Los tokens offline no caducan, pero si se revoca la app hay que repetir el proceso.
+`SHOPIFY_CLIENT_ID` y `SHOPIFY_CLIENT_SECRET` **no** son secretos del repo: solo se
+usan en local para ese intercambio puntual.
 
 ---
 
-## Errores Comunes
+## Variables del workflow
+
+Estan en `.github/workflows/daily-report.yml`, con los valores medidos.
+
+| Variable | Valor | Que hace |
+|---|---|---|
+| `META_ACCOUNT_TIMEZONE` | `Europe/Madrid` | Fallback si falla la lectura de la API |
+| `STORE_TIMEZONE` | `Europe/Madrid` | Decide que dia es "ayer" |
+| `MIN_HOURS_AFTER_CLOSE` | `3` | Horas minimas tras el cierre para publicar |
+| `REPORT_TIME_LABEL` | `9:00 (Madrid)` | Hora **real** de envio, en el pie |
+| `STORE_CURRENCY` / `_CODE` | `€` / `EUR` | Moneda de la tienda (revenue, AOV) |
+| `AD_CURRENCY` / `_CODE` | `$` / `USD` | Moneda de la cuenta de ads (gasto, CPO) |
+| `STORE_LOCALE` | `es-ES` | Formato de numeros (`1.234,56`) |
+| `SUBSCRIPTION_TAGS` | _(sin usar)_ | JSON de tags de suscripcion, si aplica |
+
+`DRY_RUN=1` imprime el reporte en el log en vez de publicarlo — util para probar
+sin duplicar mensajes en el canal.
+
+---
+
+## Probar
+
+```bash
+# Sintaxis
+for f in src/*.js; do node --check "$f"; done
+
+# Pipeline completo sin publicar en Slack
+gh workflow run daily-report.yml --ref main -f report_date=2026-07-28
+```
+
+Para validar la autenticacion del cron externo, dispara el workflow desde
+cron-job.org con **Run now** y comprueba que responde `204`. Ten en cuenta que eso
+**si** publica un reporte en Slack; si prefieres no duplicar, monta antes un
+workflow de probe que no escriba en Slack.
+
+---
+
+## Si se quiere adelantar la hora
+
+No bajarla a mano. El procedimiento es:
+
+1. Montar `meta-freshness-probe.yml` (`workflow_dispatch`, solo loguea, nada de
+   Slack) que pida el gasto del dia anterior y lo escriba en el log.
+2. Dispararlo 1 h y 2 h antes de las 09:00 durante ~5 dias.
+3. Cruzar cada muestra contra el valor consolidado dias despues.
+4. Si el error se mantiene por debajo de ~0.2 %, entonces si bajar la hora y
+   `MIN_HOURS_AFTER_CLOSE`. Si se dispara, se queda como esta y se borra el probe.
+
+---
+
+## Errores comunes
 
 | Error | Causa | Solucion |
 |---|---|---|
-| `Missing required env var: X` | Falta un secreto en GitHub | Agrega el secreto en Settings > Secrets |
-| `Meta API error: 190` | Token de Meta expirado o invalido | Genera un nuevo token (usa System User para que no expire) |
-| `Meta API error: 100` | Ad Account ID incorrecto | Verifica el ID en Business Settings > Ad Accounts |
-| `Shopify token exchange failed: 401` | Client ID/Secret incorrectos | Verifica las credenciales en el Dev Dashboard de Shopify |
-| `Shopify API error: 404` | Dominio de tienda incorrecto | Verifica que el dominio `.myshopify.com` es correcto |
-| `Slack webhook error: 403/404` | Webhook URL invalida o desactivada | Crea un nuevo webhook en api.slack.com |
-| `Claude diagnosis failed` | API key de Anthropic invalida o sin saldo | Verifica la key en console.anthropic.com |
-| `SUBSCRIPTION_TAGS is not valid JSON` | Formato JSON incorrecto | Verifica que el JSON es valido (usa un validador online) |
+| `Missing required env var: X` | Falta un secreto | Anadirlo en Settings > Secrets |
+| Sale en rojo con `[Freshness] ... cerro hace N h` | Se disparo demasiado pronto | Correcto: es el guard. Revisar la hora del cron externo |
+| `[Moneda] La cuenta de Meta factura en X` | Cambio la moneda de la cuenta | Actualizar `AD_CURRENCY_CODE` y `AD_CURRENCY` |
+| `MER-ROAS: n/d` | Fallo el tipo de cambio | Transitorio. Es intencionado: mejor `n/d` que dividir monedas distintas |
+| `Meta API error: 190` | Token de Meta invalido | Regenerar con System User |
+| `Shopify API error: 401` | Token offline revocado | Repetir el authorization code grant |
+| `Slack webhook error: 400` | Payload invalido | El reporte se trocea en bloques de 2900; revisar el body del error |

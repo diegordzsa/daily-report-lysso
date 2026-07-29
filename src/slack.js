@@ -19,18 +19,47 @@ export async function sendToSlack(webhookUrl, reportText) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      blocks: [
-        {
-          type: 'section',
-          text: { type: 'mrkdwn', text: reportText },
-        },
-      ],
+      blocks: splitIntoBlocks(reportText).map(text => ({
+        type: 'section',
+        text: { type: 'mrkdwn', text },
+      })),
     }),
   });
 
   if (!res.ok) {
-    throw new Error(`Slack webhook error: ${res.status} ${res.statusText}`);
+    const body = await res.text().catch(() => '');
+    throw new Error(`Slack webhook error: ${res.status} ${res.statusText} — ${body.slice(0, 200)}`);
   }
+}
+
+// Un bloque `section` de Slack admite 3000 caracteres; pasarse devuelve 400 y el
+// reporte entero se pierde. Partimos por lineas, nunca a mitad de una, para que
+// un diagnostico largo se reparta en varios bloques en vez de fallar.
+const SLACK_SECTION_LIMIT = 2900;
+
+function splitIntoBlocks(text) {
+  const blocks = [];
+  let current = '';
+  for (const line of text.split('\n')) {
+    // Una sola linea mas larga que el limite es el unico caso en que hay que
+    // cortar por dentro.
+    if (line.length > SLACK_SECTION_LIMIT) {
+      if (current) { blocks.push(current); current = ''; }
+      for (let i = 0; i < line.length; i += SLACK_SECTION_LIMIT) {
+        blocks.push(line.slice(i, i + SLACK_SECTION_LIMIT));
+      }
+      continue;
+    }
+    const candidate = current ? `${current}\n${line}` : line;
+    if (candidate.length > SLACK_SECTION_LIMIT) {
+      blocks.push(current);
+      current = line;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) blocks.push(current);
+  return blocks;
 }
 
 function buildSubscriptionLine(metrics) {

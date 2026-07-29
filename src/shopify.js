@@ -1,51 +1,39 @@
-import { SHOPIFY_STORE_DOMAIN, SHOPIFY_API_VERSION, SHOPIFY_ACCESS_TOKEN, REPORT_DATE } from './config.js';
+import {
+  SHOPIFY_STORE_DOMAIN, SHOPIFY_API_VERSION, SHOPIFY_ACCESS_TOKEN,
+  REPORT_DATE, STORE_TIMEZONE,
+} from './config.js';
+import { yesterdayInZone } from './freshness.js';
 
+// "Ayer" en la timezone de la tienda, no en UTC. Con toISOString() el reporte se
+// iba un dia atras en cuanto la hora local pasaba de la UTC (en Madrid, a partir
+// de las 22:00 en verano).
 export function getYesterday() {
   if (REPORT_DATE) return REPORT_DATE;
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
+  return yesterdayInZone(STORE_TIMEZONE);
 }
 
-async function getAccessToken(clientId, clientSecret) {
-  const res = await fetch(`https://${SHOPIFY_STORE_DOMAIN}/admin/oauth/access_token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: 'client_credentials',
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Shopify token exchange failed: ${res.status} ${res.statusText} — ${body.substring(0, 200)}`);
-  }
-
-  const json = await res.json();
-  return json.access_token;
-}
-
-export async function fetchShopifyOrders(clientId, clientSecret) {
-  let accessToken;
-  if (SHOPIFY_ACCESS_TOKEN) {
-    accessToken = SHOPIFY_ACCESS_TOKEN;
-    console.log(`[Shopify] Using direct access token`);
-  } else {
-    accessToken = await getAccessToken(clientId, clientSecret);
-    console.log(`[Shopify] Access token obtained via client_credentials`);
+// La app de Shopify y la tienda estan en organizaciones distintas, asi que el
+// grant `client_credentials` no aplica: el token es uno offline obtenido por
+// authorization code grant y guardado en SHOPIFY_ACCESS_TOKEN.
+export async function fetchShopifyOrders() {
+  const accessToken = SHOPIFY_ACCESS_TOKEN;
+  if (!accessToken) {
+    throw new Error('Falta SHOPIFY_ACCESS_TOKEN (token offline del authorization code grant)');
   }
 
   const yesterday = getYesterday();
-  const twoDaysAgo = new Date(yesterday);
-  twoDaysAgo.setDate(twoDaysAgo.getDate() - 1);
-  const minDate = twoDaysAgo.toISOString().slice(0, 10);
+  // Ventana UTC holgada de +-1 dia alrededor del dia local. El recorte fino lo
+  // hace el filtro por fecha local de abajo; la ventana solo evita paginar todo
+  // el historico. Si se ajustase exacto a 00:00-23:59:59Z se perderian ordenes en
+  // tiendas cuya timezone no sea UTC.
+  const dayMs = 86400000;
+  const minDate = new Date(Date.parse(`${yesterday}T00:00:00Z`) - dayMs).toISOString().slice(0, 10);
+  const maxDate = new Date(Date.parse(`${yesterday}T00:00:00Z`) + dayMs).toISOString().slice(0, 10);
 
   const params = new URLSearchParams({
     status: 'any',
     created_at_min: `${minDate}T00:00:00Z`,
-    created_at_max: `${yesterday}T23:59:59Z`,
+    created_at_max: `${maxDate}T23:59:59Z`,
     limit: '250',
     fields: 'id,created_at,subtotal_price,total_discounts,tags,line_items',
   });

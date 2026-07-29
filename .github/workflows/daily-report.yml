@@ -1,13 +1,14 @@
 name: Daily Report
 
+# El disparo lo hace un cron externo (cron-job.org) via workflow_dispatch, no el
+# scheduler de GitHub. Medido en este repo con 7 ejecuciones del cron '0 7 * * *'
+# (23-29 jul 2026): arrancaron entre +2 h 05 min y +3 h 49 min tarde, sin patron.
+# Ese jitter movia la hora de entrega casi dos horas de un dia a otro.
+# Ver SETUP.md > "Por que no hay cron de GitHub".
 on:
-  schedule:
-    # Hora UTC — Meta necesita ~7h tras medianoche para finalizar spend.
-    #   '0 7 * * *'  = 7:00 UTC = 9:00 CEST (Madrid verano) / 8:00 CET (invierno)
-    - cron: '0 7 * * *'
   workflow_dispatch:
     inputs:
-      date:
+      report_date:
         description: 'Override report date (YYYY-MM-DD). Leave empty for yesterday.'
         required: false
 
@@ -33,20 +34,39 @@ jobs:
           META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
           SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
-          SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
-          SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-          # --- Opcionales ---
+          # --- Zonas horarias y frescura (medidos 2026-07-29, no copiados) ------
+          # Cuenta de Meta "EASY_02": timezone_name=Europe/Madrid,
+          # timezone_offset_hours_utc=+2. El dia cierra a las 00:00 Madrid, que en
+          # verano son 22:00 UTC y en invierno 23:00 UTC.
+          # La tienda (SKIN+ EUR) tambien esta en Europe/Madrid: iana_timezone.
+          # Entrega a las 09:00 Madrid = 9 h despues del cierre, muy por encima del
+          # minimo. Como cuenta, tienda y lector comparten zona, el DST se cancela
+          # y 09:00 Madrid son siempre 9 h post-cierre.
+          META_ACCOUNT_TIMEZONE: 'Europe/Madrid'
+          STORE_TIMEZONE: 'Europe/Madrid'
+          MIN_HOURS_AFTER_CLOSE: '3'
+          REPORT_TIME_LABEL: '9:00 (Madrid)'
+
+          # --- Monedas (medidas 2026-07-29) ------------------------------------
+          # Shopify factura en EUR; la cuenta de Meta gasta en USD. NO coinciden:
+          # el gasto, el CPO y el revenue atribuido salen en USD y solo el gasto se
+          # convierte a EUR para poder cruzarlo con el revenue en el MER-ROAS.
           STORE_CURRENCY: '€'
-          STORE_LOCALE: 'es-MX'
-          REPORT_TIME_LABEL: '9:00 AM'
+          STORE_CURRENCY_CODE: 'EUR'
+          AD_CURRENCY: '$'
+          AD_CURRENCY_CODE: 'USD'
+
+          # --- Presentacion ----------------------------------------------------
+          # La tienda es EUR y primary_locale=es, asi que formato europeo.
+          STORE_LOCALE: 'es-ES'
           # STORE_INDUSTRY: ''
           # ROAS_BENCHMARK: ''
           # META_API_VERSION: 'v21.0'
           # SHOPIFY_API_VERSION: '2024-10'
           # CLAUDE_MODEL: 'claude-sonnet-4-6'
           # SUBSCRIPTION_TAGS: '[{"tag":"Kaching Subscription First Order","label":"1ª Susc"},{"tag":"appstle_subscription_recurring_order","label":"Recurrentes"}]'
-          REPORT_DATE: ${{ github.event.inputs.date }}
+          REPORT_DATE: ${{ github.event.inputs.report_date }}
         run: node src/report.js

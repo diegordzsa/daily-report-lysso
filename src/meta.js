@@ -1,4 +1,4 @@
-import { META_AD_ACCOUNT_ID, META_API_VERSION, REPORT_DATE } from './config.js';
+import { META_AD_ACCOUNT_ID, META_API_VERSION } from './config.js';
 
 const ACTION_MAP = {
   'link_click': 'actions_link_click',
@@ -27,19 +27,42 @@ function extractActions(actionsArray, map) {
   return result;
 }
 
-export async function fetchMetaAds(accessToken) {
+// Timezone y moneda de la cuenta publicitaria. La timezone define cuando cierra
+// el dia para Meta, que es lo que determina si el gasto ya esta consolidado; la
+// moneda define en que unidad viene `spend` y `action_values`.
+// Devuelve {} si no se pudo leer, para que el llamador use sus fallbacks.
+export async function fetchAdAccountInfo(accessToken) {
+  const params = new URLSearchParams({
+    access_token: accessToken,
+    fields: 'timezone_name,currency',
+  });
+  const url = `https://graph.facebook.com/${META_API_VERSION}/act_${META_AD_ACCOUNT_ID}?${params}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`[Meta] No se pudo leer timezone/moneda de la cuenta: ${res.status}`);
+      return {};
+    }
+    const json = await res.json();
+    return { timeZone: json.timezone_name || null, currency: json.currency || null };
+  } catch (err) {
+    console.warn(`[Meta] No se pudo leer timezone/moneda de la cuenta: ${err.message}`);
+    return {};
+  }
+}
+
+export async function fetchMetaAds(accessToken, date) {
   const fields = 'spend,impressions,clicks,actions,action_values,cpc,cpm,ctr,frequency';
   const params = new URLSearchParams({
     access_token: accessToken,
+    // Fecha explicita, nunca date_preset=yesterday: el preset lo resuelve Meta en
+    // la timezone de la cuenta y podria no ser el mismo dia que el resto del
+    // reporte.
+    time_range: JSON.stringify({ since: date, until: date }),
     level: 'account',
     fields,
   });
-
-  if (REPORT_DATE) {
-    params.set('time_range', JSON.stringify({ since: REPORT_DATE, until: REPORT_DATE }));
-  } else {
-    params.set('date_preset', 'yesterday');
-  }
 
   const url = `https://graph.facebook.com/${META_API_VERSION}/act_${META_AD_ACCOUNT_ID}/insights?${params}`;
 
@@ -59,8 +82,12 @@ export async function fetchMetaAds(accessToken) {
 
   const data = json.data || [];
   console.log(`[Meta] Got ${data.length} rows`);
-  for (const row of data) {
-    console.log(`[Meta] date=${row.date_start} raw spend=${row.spend}`);
+
+  // Esta linea es la que permite medir la deriva de consolidacion hacia adelante:
+  // se cruza contra el valor consolidado dias despues. No la quites.
+  if (data.length > 0) {
+    const rawSpend = data.reduce((s, r) => s + (parseFloat(r.spend) || 0), 0);
+    console.log(`[Meta] Raw spend for ${date}: ${rawSpend.toFixed(2)}`);
   }
 
   if (data.length === 0) return [];

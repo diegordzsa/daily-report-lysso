@@ -1,0 +1,28 @@
+name: Meta Freshness Probe
+
+# Solo lee la API de Meta y loguea. NO publica en Slack.
+# Sirve para (a) validar la autenticacion del cron externo sin mandar un reporte
+# duplicado al canal, y (b) medir la deriva de consolidacion a una hora concreta
+# antes de decidir si se adelanta la entrega. Ver SETUP.md.
+on:
+  workflow_dispatch:
+    inputs:
+      probe_date:
+        description: 'Fecha a muestrear (YYYY-MM-DD). Vacio = ayer en la zona de la cuenta.'
+        required: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probe de frescura de Meta
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          META_ACCOUNT_TIMEZONE: 'Europe/Madrid'
+          PROBE_DATE: ${{ github.event.inputs.probe_date }}
+        run: node probe.js

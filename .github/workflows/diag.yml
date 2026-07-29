@@ -9,6 +9,9 @@ on:
         description: 'probe = solo APIs | dryrun = pipeline completo sin publicar'
         required: false
         default: 'dryrun'
+      report_date:
+        description: 'Fecha a reportar (YYYY-MM-DD). Vacio = ayer.'
+        required: false
 
 jobs:
   diag:
@@ -51,4 +54,5 @@ jobs:
           AD_CURRENCY: '$'
           AD_CURRENCY_CODE: 'USD'
           STORE_LOCALE: 'es-ES'
+          REPORT_DATE: ${{ github.event.inputs.report_date }}
         run: node src/report.js

@@ -99,6 +99,7 @@ Ahora hay tres capas, de la mas barata a la mas lenta:
 | Backoff exponencial, 6 intentos (~1 min) | `src/http.js` | Huecos de segundos a un minuto |
 | Mensaje de Slack con *que hacer* | `src/http.js` → `explainHttpError` | Que el aviso sea accionable |
 | Disparos de respaldo ~12:00 y ~15:00 Madrid | `daily-report.yml` (`schedule`) | Caidas de horas |
+| Commit vacio los dias 1 y 15 | `keepalive.yml` | Que GitHub no apague el respaldo (ver abajo) |
 
 **Que se reintenta y que no.** Esperar solo sirve si el fallo se cura solo:
 
@@ -121,6 +122,27 @@ El primer paso consulta si ya hubo una ejecucion correcta hoy y, si la hubo,
 termina sin publicar nada (queda en verde). Verificado en un runner el
 2026-08-13: `Ejecuciones correctas hoy (2026-08-13): 2` → no publico nada. Asi
 que en un dia normal estos dos disparos no mandan ningun duplicado al canal.
+
+### Por que existe `keepalive.yml`
+
+GitHub **desactiva los workflows con `schedule` de los repos publicos tras 60 dias
+sin actividad**. La trampa: "actividad" son *commits*, no ejecuciones. Este repo
+corre el reporte a diario y aun asi el contador avanza. Sin nada que lo evite, el
+backstop se habria apagado solo, en silencio, y justo es lo que cubre una caida
+como la del 2026-08-13.
+
+`keepalive.yml` hace un commit vacio los dias **1 y 15** de cada mes: hueco maximo
+~31 dias, muy por debajo de los 60. Como el propio keepalive tambien es un
+`schedule`, se mantiene vivo a si mismo. Verificado el 2026-08-13 disparandolo a
+mano: commit `20dcca0` empujado por `github-actions[bot]`.
+
+Los commits `chore: keepalive` en el historial son eso y solo eso; se pueden
+ignorar.
+
+> Alternativa descartada: **poner el repo en privado** elimina la regla de raiz
+> (solo aplica a repos publicos). Se decidio mantenerlo publico. Si algun dia se
+> cambia de idea, ojo: el PAT de cron-job.org necesita scope `repo` completo —
+> con `public_repo` la entrega de las 09:00 empezaria a dar 404.
 
 ### Probes de diagnostico
 

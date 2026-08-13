@@ -1,0 +1,26 @@
+name: Shopify Probe
+
+# Solo lee la API de Shopify y loguea. NO publica en Slack.
+# Sirve para distinguir un 402 "Unavailable Shop" (tienda congelada) de un token
+# revocado o un dominio mal escrito, que desde el log del reporte no se separan.
+on:
+  workflow_dispatch:
+    inputs:
+      probe_date:
+        description: 'Fecha para contar ordenes (YYYY-MM-DD). Vacio = no cuenta.'
+        required: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probe de estado de Shopify
+        env:
+          SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
+          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+          PROBE_DATE: ${{ github.event.inputs.probe_date }}
+        run: node shopify-probe.js

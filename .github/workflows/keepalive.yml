@@ -1,0 +1,36 @@
+name: Keepalive
+
+# GitHub desactiva los workflows con `schedule` de los repos PUBLICOS cuando pasan
+# 60 dias sin actividad en el repositorio. Ojo: "actividad" son commits, no
+# ejecuciones — este repo corre el reporte a diario y aun asi el contador avanza.
+# Si eso pasara, el backstop de daily-report.yml (los disparos de las ~12:00 y
+# ~15:00 que cubren una caida como la de Shopify del 2026-08-13) quedaria dormido
+# justo cuando hace falta, y sin avisar en el canal.
+#
+# Este workflow hace un commit vacio dos veces al mes. Con un hueco maximo de ~31
+# dias entre commits, el contador de 60 nunca se acerca al limite, y como el
+# propio keepalive tambien es un `schedule`, se mantiene vivo a si mismo.
+#
+# La alternativa era hacer el repo privado (la regla solo aplica a los publicos),
+# pero se decidio mantenerlo publico.
+on:
+  schedule:
+    - cron: '0 4 1,15 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Commit vacio para resetear el contador de inactividad
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --allow-empty -m 'chore: keepalive (evita que GitHub desactive el schedule)'
+          git push
+          echo "::notice::Contador de inactividad reseteado. Proximo keepalive: dia 1 o 15."

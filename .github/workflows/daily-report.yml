@@ -42,7 +42,7 @@ jobs:
       # externo de las 09:00, o alguien a mano) siempre se ejecuta.
       - name: Comprobar si el reporte de hoy ya salio bien
         id: guard
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

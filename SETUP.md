@@ -82,7 +82,62 @@ El calculo del instante de cierre esta en `src/freshness.js` y usa
 
 ---
 
-## Por que no hay cron de GitHub
+## Reintentos y red de seguridad
+
+**Incidente del 2026-08-13.** El reporte fallo con
+`Shopify API error: 402 Payment Required — {"errors":"Unavailable Shop"}`. La
+llamada murio a los 265 ms, en el primer intento. Horas despues la misma tienda,
+con el mismo token y el mismo dominio, respondia `200 OK` (plan `professional`,
+3 ordenes el 12-ago). O sea: **hueco transitorio de Shopify, no fallo de token ni
+de codigo**. Lo que convirtio un parpadeo en un reporte perdido fue que no habia
+ningun reintento en ninguna parte.
+
+Ahora hay tres capas, de la mas barata a la mas lenta:
+
+| Capa | Donde | Cubre |
+|---|---|---|
+| Backoff exponencial, 6 intentos (~1 min) | `src/http.js` | Huecos de segundos a un minuto |
+| Mensaje de Slack con *que hacer* | `src/http.js` → `explainHttpError` | Que el aviso sea accionable |
+| Disparos de respaldo ~12:00 y ~15:00 Madrid | `daily-report.yml` (`schedule`) | Caidas de horas |
+
+**Que se reintenta y que no.** Esperar solo sirve si el fallo se cura solo:
+
+- **Se reintenta**: `402` (tienda no disponible), `408`, `425`, `429`, `5xx` y
+  errores de red.
+- **Falla a la primera**: `401` (token revocado), `403` (falta scope), `404`
+  (dominio mal). Insistir no los arregla y solo retrasa el aviso.
+
+Si un `402` era una congelacion real por facturacion, los reintentos se gastan en
+~1 min y el aviso de Slack ya dice que mirar el plan en el admin de Shopify.
+
+### La red de seguridad y el jitter
+
+El bloque `schedule` volvio al workflow, pero **no es la entrega**: esa sigue
+siendo el `workflow_dispatch` de cron-job.org a las 09:00 Madrid. El jitter de
+2-3 h que descarto el cron de GitHub para la entrega **da igual para un
+backstop**: solo se le pide que ocurra el mismo dia.
+
+El primer paso consulta si ya hubo una ejecucion correcta hoy y, si la hubo,
+termina sin publicar nada (queda en verde). Verificado en un runner el
+2026-08-13: `Ejecuciones correctas hoy (2026-08-13): 2` → no publico nada. Asi
+que en un dia normal estos dos disparos no mandan ningun duplicado al canal.
+
+### Probes de diagnostico
+
+```bash
+# Estado de la tienda: distingue un 402 de un token revocado o un dominio mal
+gh workflow run shopify-probe.yml --ref main -f probe_date=2026-08-12
+
+# Frescura de Meta
+gh workflow run meta-freshness-probe.yml --ref main
+```
+
+Ninguno de los dos escribe en Slack. `shopify-probe.js` traduce cada status HTTP
+a la accion que toca, que es justo lo que no se podia deducir del log del fallo.
+
+---
+
+## Por que no hay cron de GitHub (para la entrega)
 
 **El scheduler de GitHub Actions no sirve para una hora fija.** Medido en este
 repo, 7 ejecuciones del cron `0 7 * * *` entre el 23 y el 29 de julio de 2026:
@@ -98,7 +153,9 @@ repo, 7 ejecuciones del cron `0 7 * * *` entre el 23 y el 29 de julio de 2026:
 | 07-29 | 09:43:52 | +2 h 43 min |
 
 Casi dos horas de diferencia entre el dia mas puntual y el mas tarde, sin patron.
-El bloque `schedule:` esta eliminado del workflow; solo queda `workflow_dispatch`.
+Por eso **la entrega** la dispara cron-job.org por `workflow_dispatch`. El
+`schedule:` que hay en el workflow es solo la red de seguridad descrita arriba, a
+otras horas y con un guard que impide duplicados.
 
 ### Disparo externo (cron-job.org)
 
@@ -214,4 +271,5 @@ No bajarla a mano. El procedimiento es:
 | `MER-ROAS: n/d` | Fallo el tipo de cambio | Transitorio. Es intencionado: mejor `n/d` que dividir monedas distintas |
 | `Meta API error: 190` | Token de Meta invalido | Regenerar con System User |
 | `Shopify API error: 401` | Token offline revocado | Repetir el authorization code grant |
+| `Shopify API error: 402 — Unavailable Shop` | Tienda congelada, pausada o hueco transitorio de Shopify | Ya se reintenta ~1 min y hay backstop a las 12:00 y 15:00. Si persiste, mirar Shopify admin > Settings > Plan (factura impagada). Confirmar con `shopify-probe.yml` |
 | `Slack webhook error: 400` | Payload invalido | El reporte se trocea en bloques de 2900; revisar el body del error |

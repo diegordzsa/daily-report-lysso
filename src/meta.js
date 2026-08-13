@@ -1,4 +1,5 @@
 import { META_AD_ACCOUNT_ID, META_API_VERSION } from './config.js';
+import { fetchWithRetry } from './http.js';
 
 const ACTION_MAP = {
   'link_click': 'actions_link_click',
@@ -67,12 +68,7 @@ export async function fetchMetaAds(accessToken, date) {
   const url = `https://graph.facebook.com/${META_API_VERSION}/act_${META_AD_ACCOUNT_ID}/insights?${params}`;
 
   console.log(`[Meta] Fetching ad insights...`);
-  const res = await fetch(url);
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Meta API error: ${res.status} ${res.statusText} — ${body.substring(0, 200)}`);
-  }
+  const res = await fetchWithRetry(url, {}, { label: 'Meta' });
 
   const json = await res.json();
 

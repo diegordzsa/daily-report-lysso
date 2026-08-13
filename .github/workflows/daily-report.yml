@@ -5,12 +5,32 @@ name: Daily Report
 # (23-29 jul 2026): arrancaron entre +2 h 05 min y +3 h 49 min tarde, sin patron.
 # Ese jitter movia la hora de entrega casi dos horas de un dia a otro.
 # Ver SETUP.md > "Por que no hay cron de GitHub".
+#
+# El bloque `schedule` de abajo NO es la entrega: es una red de seguridad. El
+# 2026-08-13 Shopify devolvio 402 "Unavailable Shop" a las 09:01 y el reporte de
+# ese dia se perdio entero, porque un fallo a las 09:00 no tenia segunda
+# oportunidad. Los reintentos de src/http.js cubren un hueco de ~1 min; estos dos
+# disparos cubren una caida de horas. El jitter del scheduler (las 2-3 h medidas)
+# da igual aqui: a un backstop solo se le pide que ocurra el mismo dia.
+# El primer paso corta si ya hubo un reporte correcto hoy, asi que en un dia
+# normal estas ejecuciones no publican nada.
 on:
   workflow_dispatch:
     inputs:
       report_date:
         description: 'Override report date (YYYY-MM-DD). Leave empty for yesterday.'
         required: false
+      dry_run:
+        description: 'Poner a 1 para imprimir el reporte en el log sin publicarlo en Slack.'
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 10 * * *'   # ~12:00 Madrid en verano
+    - cron: '0 13 * * *'   # ~15:00 Madrid en verano
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   report:
@@ -18,15 +38,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Solo aplica a los disparos programados. Un workflow_dispatch (el cron
+      # externo de las 09:00, o alguien a mano) siempre se ejecuta.
+      - name: Comprobar si el reporte de hoy ya salio bien
+        id: guard
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # En UTC porque `createdAt` viene en UTC. Los disparos van de las 09:00
+          # a las 16:00 UTC, franja en la que la fecha UTC y la de Madrid
+          # coinciden siempre, asi que no hace falta convertir.
+          today=$(date -u +%F)
+          ok=$(gh run list --workflow=daily-report.yml --status=success \
+                 --limit 40 --json createdAt \
+                 --jq "[.[] | select(.createdAt | startswith(\"$today\"))] | length")
+          echo "Ejecuciones correctas hoy ($today): $ok"
+          if [ "$ok" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "El reporte de hoy ya se publico. No se hace nada."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No hay reporte correcto hoy todavia — reintentando."
+          fi
+
       - name: Setup Node.js
+        if: steps.guard.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: Install dependencies
+        if: steps.guard.outputs.skip != 'true'
         run: npm install
 
+      - name: Run tests
+        if: steps.guard.outputs.skip != 'true'
+        run: npm test
+
       - name: Run daily report
+        if: steps.guard.outputs.skip != 'true'
         env:
           # --- Requeridas (configurar en Settings > Secrets) ---
           STORE_NAME: ${{ secrets.STORE_NAME }}
@@ -69,4 +120,5 @@ jobs:
           # CLAUDE_MODEL: 'claude-sonnet-4-6'
           # SUBSCRIPTION_TAGS: '[{"tag":"Kaching Subscription First Order","label":"1ª Susc"},{"tag":"appstle_subscription_recurring_order","label":"Recurrentes"}]'
           REPORT_DATE: ${{ github.event.inputs.report_date }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: node src/report.js

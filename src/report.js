@@ -1,6 +1,7 @@
 import { fetchShopifyOrders, getYesterday } from './shopify.js';
 import { fetchMetaAds, fetchAdAccountInfo } from './meta.js';
 import { hoursSinceDayClose } from './freshness.js';
+import { explainHttpError } from './http.js';
 import { generateDiagnosis } from './claude.js';
 import { sendToSlack, formatReport } from './slack.js';
 import {
@@ -92,8 +93,15 @@ async function run() {
     ]);
   } catch (err) {
     console.error('API fetch failed:', err.message);
+    // Ya se reintento con backoff dentro de fetchWithRetry: si llegamos aqui, el
+    // fallo persiste y hace falta que alguien actue. El mensaje dice que mirar.
+    const explanation = explainHttpError(err);
+    const attempts = err.attempts > 1 ? ` (tras ${err.attempts} intentos)` : '';
     await sendToSlack(SLACK_WEBHOOK_URL,
-      `:warning: *${STORE_NAME} — Reporte Diario FALLIDO*\nNo se pudieron obtener datos.\nError: ${err.message}`
+      `:warning: *${STORE_NAME} — Reporte Diario FALLIDO*\n${yesterday}\n\n` +
+      `No se pudieron obtener datos${attempts}.\n` +
+      `Error: ${err.message}` +
+      (explanation ? `\n\n:wrench: *Que hacer:* ${explanation}` : '')
     );
     process.exit(1);
   }

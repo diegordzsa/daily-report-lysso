@@ -3,6 +3,7 @@ import {
   REPORT_DATE, STORE_TIMEZONE,
 } from './config.js';
 import { yesterdayInZone } from './freshness.js';
+import { fetchWithRetry } from './http.js';
 
 // "Ayer" en la timezone de la tienda, no en UTC. Con toISOString() el reporte se
 // iba un dia atras en cuanto la hora local pasaba de la UTC (en Madrid, a partir
@@ -43,14 +44,9 @@ export async function fetchShopifyOrders() {
 
   while (url) {
     console.log(`[Shopify] Fetching orders...`);
-    const res = await fetch(url, {
+    const res = await fetchWithRetry(url, {
       headers: { 'X-Shopify-Access-Token': accessToken },
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`Shopify API error: ${res.status} ${res.statusText} — ${body.substring(0, 200)}`);
-    }
+    }, { label: 'Shopify' });
 
     const json = await res.json();
     allOrders.push(...(json.orders || []));

@@ -65,7 +65,7 @@ function yesterdayInZone(timeZone) {
 }
 
 async function main() {
-  console.log(`[Probe] Ahora UTC: ${new Date().toISOString()}`);
+  console.log(`[Probe] Ahora UTC: ${new Date().toISOString()} | Graph API ${API}`);
 
   const infoParams = new URLSearchParams({
     access_token: TOKEN, fields: 'name,timezone_name,currency',

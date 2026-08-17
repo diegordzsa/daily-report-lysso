@@ -9,13 +9,19 @@ on:
       probe_date:
         description: 'Fecha para contar ordenes (YYYY-MM-DD). Vacio = no cuenta.'
         required: false
+      # Sirve para comprobar contra la tienda real si una version nueva sigue
+      # sirviendo `orders.json` ANTES de fijarla en el reporte: la REST Admin API
+      # es legacy desde octubre de 2024 y sus endpoints van cayendo por version.
+      api_version:
+        description: 'Version de la Admin API a probar (ej. 2026-07). Vacio = la del codigo.'
+        required: false
 
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - name: Probe de estado de Shopify
@@ -23,4 +29,5 @@ jobs:
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
           SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
           PROBE_DATE: ${{ github.event.inputs.probe_date }}
+          SHOPIFY_API_VERSION: ${{ github.event.inputs.api_version }}
         run: node shopify-probe.js

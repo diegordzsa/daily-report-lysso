@@ -10,13 +10,18 @@ on:
       probe_date:
         description: 'Fecha a muestrear (YYYY-MM-DD). Vacio = ayer en la zona de la cuenta.'
         required: false
+      # Sirve para probar una version nueva de la Graph API contra la cuenta real
+      # ANTES de fijarla en el reporte. Meta retira cada version a los ~2 anos.
+      api_version:
+        description: 'Version de la Graph API a probar (ej. v26.0). Vacio = la del codigo.'
+        required: false
 
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - name: Probe de frescura de Meta
@@ -25,4 +30,5 @@ jobs:
           META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
           META_ACCOUNT_TIMEZONE: 'Europe/Madrid'
           PROBE_DATE: ${{ github.event.inputs.probe_date }}
+          META_API_VERSION: ${{ github.event.inputs.api_version }}
         run: node probe.js

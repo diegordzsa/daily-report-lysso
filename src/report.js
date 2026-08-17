@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { fetchShopifyOrders, getYesterday } from './shopify.js';
 import { fetchMetaAds, fetchAdAccountInfo } from './meta.js';
 import { hoursSinceDayClose } from './freshness.js';
@@ -9,7 +10,24 @@ import {
   SLACK_WEBHOOK_URL, SUBSCRIPTION_TAGS,
   META_ACCOUNT_TIMEZONE, STORE_TIMEZONE, MIN_HOURS_AFTER_CLOSE,
   AD_CURRENCY_CODE, STORE_CURRENCY_CODE,
+  ALERT_ON_FAILURE, ATTEMPT_LABEL,
 } from './config.js';
+
+// Un aviso de fallo, publicado solo si a este intento le toca avisar. Los
+// reintentos del dia comparten el mismo diagnostico, asi que repetirlo en el canal
+// no anade informacion: solo entierra el mensaje que si importa.
+async function avisar({ emoji, titulo, fecha, cuerpo }) {
+  if (!ALERT_ON_FAILURE) {
+    console.warn(
+      '[Aviso] Suprimido en este intento (ALERT_ON_FAILURE=false). ' +
+      'Si el fallo persiste, el respaldo final del dia si avisara.'
+    );
+    return;
+  }
+  const intento = ATTEMPT_LABEL ? ` — ${ATTEMPT_LABEL}` : '';
+  await sendToSlack(SLACK_WEBHOOK_URL,
+    `${emoji} *${STORE_NAME} — ${titulo}${intento}*\n${fecha}\n\n${cuerpo}`);
+}
 
 // Meta sigue agregando gasto durante horas despues de que cierra el dia en la
 // timezone de la cuenta. Publicar antes de tiempo subestima el spend, lo que
@@ -51,12 +69,15 @@ async function assertMetaDataIsSettled(reportDate) {
     : `solo han pasado ${hours.toFixed(1)} h desde el cierre, el minimo es ${MIN_HOURS_AFTER_CLOSE} h`;
 
   console.error(`Datos de Meta sin consolidar: ${reason}`);
-  await sendToSlack(SLACK_WEBHOOK_URL,
-    `:hourglass_flowing_sand: *${STORE_NAME} — Reporte Diario NO publicado*\n${reportDate}\n\n` +
-    `Meta aun no consolida el gasto: ${reason}.\n` +
-    `No se publica el reporte para no dar cifras incorrectas ` +
-    `(un gasto subestimado infla ROAS y MER).`
-  );
+  await avisar({
+    emoji: ':hourglass_flowing_sand:',
+    titulo: 'Reporte Diario NO publicado',
+    fecha: reportDate,
+    cuerpo:
+      `Meta aun no consolida el gasto: ${reason}.\n` +
+      `No se publica el reporte para no dar cifras incorrectas ` +
+      `(un gasto subestimado infla ROAS y MER).`,
+  });
   process.exit(1);
 }
 
@@ -97,24 +118,38 @@ async function run() {
     // fallo persiste y hace falta que alguien actue. El mensaje dice que mirar.
     const explanation = explainHttpError(err);
     const attempts = err.attempts > 1 ? ` (tras ${err.attempts} intentos)` : '';
-    await sendToSlack(SLACK_WEBHOOK_URL,
-      `:warning: *${STORE_NAME} — Reporte Diario FALLIDO*\n${yesterday}\n\n` +
-      `No se pudieron obtener datos${attempts}.\n` +
-      `Error: ${err.message}` +
-      (explanation ? `\n\n:wrench: *Que hacer:* ${explanation}` : '')
-    );
+    await avisar({
+      emoji: ':warning:',
+      titulo: 'Reporte Diario FALLIDO',
+      fecha: yesterday,
+      cuerpo:
+        `No se pudieron obtener datos${attempts}.\n` +
+        `Error: ${err.message}` +
+        (explanation ? `\n\n:wrench: *Que hacer:* ${explanation}` : ''),
+    });
     process.exit(1);
   }
 
   console.log(`[Debug] Yesterday: ${yesterday}`);
   console.log(`[Debug] Meta rows: ${metaData.length}, Shopify rows: ${shopifyData.length}`);
 
-  if (metaData.length === 0 && shopifyData.length === 0) {
-    console.warn('Both APIs returned 0 rows — sending warning to Slack');
-    await sendToSlack(SLACK_WEBHOOK_URL,
-      `:warning: *${STORE_NAME} — Reporte Diario*\n${yesterday}\n\nNo se obtuvieron datos de Meta ni de Shopify. Verifica que los tokens de acceso siguen activos.`
+  // Cero filas NO es un fallo. Si llegamos aqui es que las dos APIs contestaron
+  // 200: `fetchWithRetry` lanza ante cualquier status de error, asi que un token
+  // revocado (401), una tienda congelada (402) o un scope que falta (403) habrian
+  // salido por el `catch` de arriba con su mensaje. Un cuerpo vacio con 200 es un
+  // dato: ese dia no hubo entrega de ads ni pedidos.
+  //
+  // Antes esto publicaba "verifica que los tokens siguen activos" y salia con
+  // exit 1. Del 15 al 17 de agosto de 2026 mando a revisar unas credenciales que
+  // estaban perfectas, tres veces al dia: el exit 1 hacia que el guard del
+  // backstop no viera ninguna ejecucion correcta y los dos respaldos repitieran el
+  // mismo aviso.
+  const sinActividad = metaData.length === 0 && shopifyData.length === 0;
+  if (sinActividad) {
+    console.log(
+      'Sin actividad: 0 filas de Meta y 0 pedidos de Shopify, con 200 en las dos. ' +
+      'Se publica el reporte en ceros.'
     );
-    process.exit(1);
   }
 
   const adToStoreRate = await fetchAdToStoreRate();
@@ -128,7 +163,7 @@ async function run() {
 
   let diagnosis;
   try {
-    diagnosis = await generateDiagnosis(metrics);
+    diagnosis = await generateDiagnosis(metrics, { sinActividad });
   } catch (err) {
     console.error('Claude diagnosis failed:', err.message, err.status ?? '', err.error ?? '');
     diagnosis = 'Diagnostico no disponible — error al generar analisis.';
@@ -139,6 +174,7 @@ async function run() {
     metrics,
     diagnosis,
     hoursSettled,
+    sinActividad,
   });
 
   try {
@@ -159,7 +195,9 @@ function hasTag(row, tag) {
   return tags.includes(tag);
 }
 
-function calculateMetrics(metaRows, shopifyRows, adToStoreRate) {
+// Exportada para poder probar el caso "las dos fuentes vacias" sin tocar las APIs:
+// es el que dejo el reporte en rojo tres dias de agosto de 2026.
+export function calculateMetrics(metaRows, shopifyRows, adToStoreRate) {
   // Todo lo que sale de Meta viene en la moneda de la cuenta de ads.
   const adSpend = sum(metaRows, 'spend');
   const impressions = sum(metaRows, 'impressions');
@@ -208,4 +246,13 @@ function calculateMetrics(metaRows, shopifyRows, adToStoreRate) {
   };
 }
 
-run();
+// Solo se ejecuta cuando este fichero es el que arranca (`node src/report.js`).
+// Importarlo desde un test no debe disparar el reporte ni pegar a ninguna API.
+// argv[1] no existe si a Node se le pasa el codigo por `-e`: sin la primera
+// comprobacion, importar este modulo desde ahi revienta antes de nada.
+const esPuntoDeEntrada = process.argv[1]
+  && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (esPuntoDeEntrada) {
+  run();
+}

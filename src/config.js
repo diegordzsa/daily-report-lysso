@@ -60,6 +60,17 @@ export const META_ACCOUNT_TIMEZONE = optional('META_ACCOUNT_TIMEZONE', 'Europe/M
 export const STORE_TIMEZONE = optional('STORE_TIMEZONE', 'Europe/Madrid');
 export const MIN_HOURS_AFTER_CLOSE = numeric('MIN_HOURS_AFTER_CLOSE', 3);
 
+// --- Avisos de fallo ---------------------------------------------------------
+// El mismo fallo se reintenta hasta tres veces al dia (entrega + dos respaldos) y
+// sin esto cada intento publicaba su propio aviso identico: el 15-ago el canal
+// recibio tres. El workflow pone ALERT_ON_FAILURE=false en el respaldo
+// intermedio, que reintenta en silencio; la entrega y el respaldo final si avisan.
+// Default `true`: correr esto a mano o en local siempre avisa.
+export const ALERT_ON_FAILURE = optional('ALERT_ON_FAILURE', 'true') !== 'false';
+// Que intento del dia es este ('entrega', 'respaldo final'). Va en el aviso para
+// que dos mensajes el mismo dia no parezcan un duplicado.
+export const ATTEMPT_LABEL = optional('ATTEMPT_LABEL');
+
 export const STORE_LOCALE = optional('STORE_LOCALE', 'es-ES');
 export const STORE_INDUSTRY = optional('STORE_INDUSTRY');
 export const ROAS_BENCHMARK = optional('ROAS_BENCHMARK');

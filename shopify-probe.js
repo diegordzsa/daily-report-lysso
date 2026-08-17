@@ -77,6 +77,21 @@ async function main() {
   });
   const count = await call(`orders/count.json?${params}`);
   console.log(`[Probe] GET /orders/count.json (${DATE} UTC) -> ${count.status}: ${count.body.substring(0, 200)}`);
+
+  // La llamada exacta que hace el reporte, campos incluidos. La REST Admin API es
+  // legacy desde octubre de 2024 y sus endpoints se van retirando por version, asi
+  // que antes de fijar una version nueva en SHOPIFY_API_VERSION hay que ver este
+  // 200 con `api_version` puesta a la candidata.
+  params.set('limit', '1');
+  params.set('fields', 'id,created_at,subtotal_price,total_discounts,tags,line_items');
+  const list = await call(`orders.json?${params}`);
+  const orders = list.status === 200 ? (JSON.parse(list.body).orders ?? []).length : 'n/d';
+  console.log(`[Probe] GET /orders.json (misma llamada que el reporte, API ${API}) -> ` +
+    `${list.status} ${list.statusText}, ${orders} pedido(s) en la pagina`);
+  if (list.status !== 200) {
+    console.error(`[Probe] Esta version NO sirve para el reporte. Cuerpo: ${list.body.substring(0, 300)}`);
+    process.exit(1);
+  }
 }
 
 main().catch(e => { console.error('[Probe] FALLO:', e.message); process.exit(1); });

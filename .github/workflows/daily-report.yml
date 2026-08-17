@@ -36,10 +36,11 @@ jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Solo aplica a los disparos programados. Un workflow_dispatch (el cron
-      # externo de las 09:00, o alguien a mano) siempre se ejecuta.
+      # externo, que entra a las 09:00 UTC = 11:00 Madrid, o alguien a mano)
+      # siempre se ejecuta.
       - name: Comprobar si el reporte de hoy ya salio bien
         id: guard
         if: github.event_name == 'schedule'
@@ -62,9 +63,20 @@ jobs:
             echo "::warning::No hay reporte correcto hoy todavia — reintentando."
           fi
 
+      # Los tres disparos del dia comparten diagnostico: si falla la entrega, los
+      # respaldos fallan igual y publicar tres avisos identicos solo entierra el
+      # mensaje (paso el 15-ago de 2026). Avisan la entrega y el respaldo FINAL; el
+      # intermedio reintenta callado. Si cron-job.org no llegara a disparar, el
+      # respaldo final sigue avisando, asi que el canal nunca se queda mudo.
+      - name: Decidir si este intento avisa en Slack
+        id: aviso
+        run: |
+          echo "alert=${{ github.event_name != 'schedule' || github.event.schedule == '0 13 * * *' }}" >> "$GITHUB_OUTPUT"
+          echo "label=${{ github.event_name != 'schedule' && 'entrega' || (github.event.schedule == '0 13 * * *' && 'respaldo final' || 'respaldo intermedio') }}" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js
         if: steps.guard.outputs.skip != 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
@@ -93,13 +105,22 @@ jobs:
           # timezone_offset_hours_utc=+2. El dia cierra a las 00:00 Madrid, que en
           # verano son 22:00 UTC y en invierno 23:00 UTC.
           # La tienda (SKIN+ EUR) tambien esta en Europe/Madrid: iana_timezone.
-          # Entrega a las 09:00 Madrid = 9 h despues del cierre, muy por encima del
-          # minimo. Como cuenta, tienda y lector comparten zona, el DST se cancela
-          # y 09:00 Madrid son siempre 9 h post-cierre.
+          # Entrega a las 11:00 Madrid = 11 h despues del cierre, muy por encima
+          # del minimo. Como cuenta, tienda y lector comparten zona, el DST se
+          # cancela y las 11:00 de Madrid son siempre 11 h post-cierre.
           META_ACCOUNT_TIMEZONE: 'Europe/Madrid'
           STORE_TIMEZONE: 'Europe/Madrid'
           MIN_HOURS_AFTER_CLOSE: '3'
-          REPORT_TIME_LABEL: '9:00 (Madrid)'
+          # Hora REAL de entrega, medida: el dispatch de cron-job.org entra a las
+          # 09:00 UTC, que son las 11:00 de Madrid (el log lo confirma: "cerro hace
+          # 11.01 h"). Estuvo puesto en '9:00 (Madrid)' y era falso. Se queda a las
+          # 11:00 a proposito: 11 h post-cierre consolidan el gasto de Meta mejor
+          # que 9 h, y el minimo exigido son 3 h.
+          REPORT_TIME_LABEL: '11:00 (Madrid)'
+
+          # --- Politica de avisos (ver el paso "Decidir si este intento avisa") ---
+          ALERT_ON_FAILURE: ${{ steps.aviso.outputs.alert }}
+          ATTEMPT_LABEL: ${{ steps.aviso.outputs.label }}
 
           # --- Monedas (medidas 2026-07-29) ------------------------------------
           # Shopify factura en EUR; la cuenta de Meta gasta en USD. NO coinciden:

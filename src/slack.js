@@ -68,7 +68,15 @@ function buildSubscriptionLine(metrics) {
   return `  ${parts.join(' | ')}`;
 }
 
-export function formatReport({ date, metrics, diagnosis, hoursSettled }) {
+// Un dia entero en ceros se lee igual que un reporte roto, y quien lo mira acaba
+// sospechando de los tokens. Esta nota dice explicitamente que las dos APIs
+// contestaron bien, que es justo lo que no se podia deducir mirando el mensaje.
+const NOTA_SIN_ACTIVIDAD =
+  `_:zzz: Dia sin actividad: ni pedidos en Shopify ni entrega de ads en Meta. ` +
+  `Las dos APIs respondieron correctamente, asi que *no es un problema de tokens* — ` +
+  `los ceros son reales. Si no se esperaba, mira si la tienda o las campanas estan en pausa._`;
+
+export function formatReport({ date, metrics, diagnosis, hoursSettled, sinActividad = false }) {
   const d = new Date(date);
   const dateStr = d.toLocaleDateString(STORE_LOCALE, {
     day: 'numeric', month: 'long', year: 'numeric',
@@ -81,6 +89,7 @@ export function formatReport({ date, metrics, diagnosis, hoursSettled }) {
     dateStr,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
     ``,
+    ...(sinActividad ? [NOTA_SIN_ACTIVIDAD, ``] : []),
     `:moneybag: *REVENUE*`,
     `  Net Sales (Shopify): ${STORE_CURRENCY}${fmt(metrics.shopifyRevenue)}`,
     `  Ordenes: ${metrics.shopifyOrders} | AOV: ${STORE_CURRENCY}${fmt(metrics.shopifyAOV)}`,

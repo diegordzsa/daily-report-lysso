@@ -18,7 +18,7 @@ function buildRoasInstruction() {
   return '2. Si el ROAS es bueno, malo o normal para ecommerce DTC';
 }
 
-export async function generateDiagnosis(metrics) {
+export async function generateDiagnosis(metrics, { sinActividad = false } = {}) {
   const client = new Anthropic();
 
   const subscriptionBlock = buildSubscriptionLines(metrics);
@@ -36,8 +36,17 @@ export async function generateDiagnosis(metrics) {
     ? ` (= ${STORE_CURRENCY}${metrics.adSpendStore.toFixed(2)} ${STORE_CURRENCY_CODE})`
     : '';
 
-  const prompt = `Eres un analista de ecommerce DTC. Tienes los siguientes datos de ayer para ${STORE_NAME}:
+  // Sin un dia sin actividad declarado, el modelo lee los ceros como un embudo con
+  // fugas y receta optimizaciones de creatividades que no existen.
+  const contextoSinActividad = sinActividad
+    ? `\nCONTEXTO: este dia no tuvo NINGUNA actividad — cero entrega de ads y cero
+pedidos. Las dos APIs respondieron correctamente, asi que los ceros son reales y no
+un fallo de lectura. No analices el embudo (no hay embudo): di en 2-3 lineas que el
+dia estuvo parado y que hay que comprobar si la tienda o las campanas estan en pausa.\n`
+    : '';
 
+  const prompt = `Eres un analista de ecommerce DTC. Tienes los siguientes datos de ayer para ${STORE_NAME}:
+${contextoSinActividad}
 IMPORTANTE — monedas distintas: la cuenta de Meta factura en ${AD_CURRENCY_CODE} y la
 tienda de Shopify en ${STORE_CURRENCY_CODE}. No compares cifras de las dos fuentes sin
 convertir; los ratios ya vienen calculados en la moneda correcta.

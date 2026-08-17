@@ -10,7 +10,7 @@
 
 const DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
 const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
-const API = process.env.SHOPIFY_API_VERSION || '2024-10';
+const API = process.env.SHOPIFY_API_VERSION || '2026-07';
 const DATE = process.env.PROBE_DATE;
 
 if (!DOMAIN || !TOKEN) {

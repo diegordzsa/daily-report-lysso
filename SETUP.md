@@ -243,10 +243,17 @@ ninguna, dejaba correr los dos respaldos, y cada uno republicaba el mismo aviso.
 
 ## Versiones de API
 
-| Que | Donde | Ojo |
-|---|---|---|
-| `SHOPIFY_API_VERSION` | `src/config.js` | La REST Admin API es **legacy** desde octubre de 2024 y sus endpoints se retiran por version. El reporte usa `orders.json`. |
-| `META_API_VERSION` | `src/config.js` | Meta garantiza ~2 anos por version. **`v21.0` se retira el 2027-01-21.** |
+| Que | Fijada | Antes | Ojo |
+|---|---|---|---|
+| `SHOPIFY_API_VERSION` | `2026-07` | `2024-10` | La REST Admin API es **legacy** desde octubre de 2024 y sus endpoints se retiran por version. El reporte usa `orders.json`. |
+| `META_API_VERSION` | `v26.0` | `v21.0` | Meta garantiza ~2 anos por version. La `v21.0` que habia **se retira el 2027-01-21**. |
+
+Las dos se subieron el **2026-08-17**, despues de probarlas contra las cuentas
+reales: Shopify `2026-07` sirvio `orders.json` con los mismos `fields` del reporte
+(200, pedidos del 11-ago) y Meta `v26.0` devolvio insights de ese dia (spend 194.59
+USD, 3081 impresiones). Las anteriores estaban las dos fuera o al borde de soporte;
+`2024-10` funcionaba solo porque Shopify degrada en silencio a una version
+soportada, que es la clase de cosa que se rompe sin avisar.
 
 Ninguna de las dos se sube a ciegas. El procedimiento es probar la candidata contra
 las cuentas reales, que para eso los probes aceptan `api_version`, y solo despues

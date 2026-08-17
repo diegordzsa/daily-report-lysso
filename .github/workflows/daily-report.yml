@@ -136,8 +136,8 @@ jobs:
           STORE_LOCALE: 'es-ES'
           # STORE_INDUSTRY: ''
           # ROAS_BENCHMARK: ''
-          # META_API_VERSION: 'v21.0'
-          # SHOPIFY_API_VERSION: '2024-10'
+          # META_API_VERSION: 'v26.0'
+          # SHOPIFY_API_VERSION: '2026-07'
           # CLAUDE_MODEL: 'claude-sonnet-4-6'
           # SUBSCRIPTION_TAGS: '[{"tag":"Kaching Subscription First Order","label":"1ª Susc"},{"tag":"appstle_subscription_recurring_order","label":"Recurrentes"}]'
           REPORT_DATE: ${{ github.event.inputs.report_date }}

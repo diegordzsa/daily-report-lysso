@@ -75,8 +75,14 @@ export const STORE_LOCALE = optional('STORE_LOCALE', 'es-ES');
 export const STORE_INDUSTRY = optional('STORE_INDUSTRY');
 export const ROAS_BENCHMARK = optional('ROAS_BENCHMARK');
 export const REPORT_TIME_LABEL = optional('REPORT_TIME_LABEL', '9:00 (Madrid)');
-export const META_API_VERSION = optional('META_API_VERSION', 'v21.0');
-export const SHOPIFY_API_VERSION = optional('SHOPIFY_API_VERSION', '2024-10');
+// Verificadas contra las cuentas reales el 2026-08-17 con los probes (`api_version`):
+// Meta v26.0 devolvio insights del 11-ago (spend 194.59 USD, 3081 impresiones) y
+// Shopify 2026-07 sirvio `orders.json` con los mismos `fields` que usa el reporte.
+// Venian en v21.0 (Meta la retira el 2027-01-21) y 2024-10 (fuera de soporte desde
+// finales de 2025, funcionaba solo porque Shopify degrada a una version soportada).
+// No subir ninguna de las dos sin repetir esos probes antes: ver SETUP.md.
+export const META_API_VERSION = optional('META_API_VERSION', 'v26.0');
+export const SHOPIFY_API_VERSION = optional('SHOPIFY_API_VERSION', '2026-07');
 export const CLAUDE_MODEL = optional('CLAUDE_MODEL', 'claude-sonnet-4-6');
 export const REPORT_DATE = optional('REPORT_DATE');
 export const SUBSCRIPTION_TAGS = parseSubscriptionTags(optional('SUBSCRIPTION_TAGS'));

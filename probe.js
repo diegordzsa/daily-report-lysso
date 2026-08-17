@@ -11,7 +11,7 @@
 
 const TOKEN = process.env.META_ACCESS_TOKEN;
 const ACCOUNT = process.env.META_AD_ACCOUNT_ID;
-const API = process.env.META_API_VERSION || 'v21.0';
+const API = process.env.META_API_VERSION || 'v26.0';
 const FALLBACK_TZ = process.env.META_ACCOUNT_TIMEZONE || 'Europe/Madrid';
 
 if (!TOKEN || !ACCOUNT) {

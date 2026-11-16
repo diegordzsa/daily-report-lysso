@@ -343,6 +343,24 @@ por authorization code grant:
 3. `SHOPIFY_CLIENT_ID=... SHOPIFY_CLIENT_SECRET=... SHOPIFY_STORE_DOMAIN=... node exchange-token.js <code>`
 4. El token que imprime se guarda como `SHOPIFY_ACCESS_TOKEN`.
 
+**Scopes: `read_orders,read_reports`.** `read_orders` alimenta revenue y ordenes;
+`read_reports` alimenta la seccion *CONVERSIÓN TIENDA* (sesiones, % añadido al
+carrito, % llegaron al checkout, % conversion — los mismos numeros que Shopify >
+Analytics), que sale de una consulta ShopifyQL al dataset `sessions`. Los % son
+sobre el total de sesiones, igual que en Shopify.
+
+Si el token solo tiene `read_orders` (el token original), el reporte se publica
+igual y esa seccion dice *"No disponible — al token de Shopify le falta el scope
+read_reports"*. Para activarla:
+
+1. En la app (Dev Dashboard / Partners) anadir `read_reports` a los scopes y, si lo
+   pide, declarar el acceso a **datos protegidos de clientes** (nivel 2): Shopify
+   lo exige para `shopifyqlQuery`.
+2. Repetir el authorization code grant (`setup-token.js` ya pide los dos scopes).
+3. Guardar el token nuevo en `SHOPIFY_ACCESS_TOKEN`.
+4. Comprobar con `gh workflow run shopify-probe.yml --ref main`: la linea
+   `ShopifyQL embudo` debe dar 200 con filas, sin `ACCESS_DENIED`.
+
 Los tokens offline no caducan, pero si se revoca la app hay que repetir el proceso.
 `SHOPIFY_CLIENT_ID` y `SHOPIFY_CLIENT_SECRET` **no** son secretos del repo: solo se
 usan en local para ese intercambio puntual.

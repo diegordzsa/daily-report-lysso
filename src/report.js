@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url';
-import { fetchShopifyOrders, getYesterday } from './shopify.js';
+import { fetchShopifyOrders, fetchShopifyFunnel, getYesterday } from './shopify.js';
 import { fetchMetaAds, fetchAdAccountInfo } from './meta.js';
 import { hoursSinceDayClose } from './freshness.js';
 import { explainHttpError } from './http.js';
@@ -106,6 +106,17 @@ async function run() {
   const yesterday = getYesterday();
   const { hours: hoursSettled } = await assertMetaDataIsSettled(yesterday);
 
+  // El embudo de sesiones de Shopify es un extra: si falla (p. ej. el token aun
+  // no tiene `read_reports`) el reporte sale igual, con la seccion marcada como
+  // no disponible. Pedidos y gasto si son imprescindibles.
+  const funnelPromise = fetchShopifyFunnel(yesterday).then(
+    data => ({ data, error: null }),
+    err => {
+      console.warn(`[Shopify] Embudo de conversion no disponible: ${err.message}`);
+      return { data: null, error: err.message };
+    },
+  );
+
   let metaData, shopifyData;
   try {
     [metaData, shopifyData] = await Promise.all([
@@ -153,7 +164,9 @@ async function run() {
   }
 
   const adToStoreRate = await fetchAdToStoreRate();
-  const metrics = calculateMetrics(metaData, shopifyData, adToStoreRate);
+  const funnel = await funnelPromise;
+  const metrics = calculateMetrics(metaData, shopifyData, adToStoreRate, funnel.data);
+  metrics.storeFunnelError = funnel.error;
 
   const subDebug = metrics.subscriptionCounts.map(s => `${s.label}: ${s.count}`).join(', ');
   console.log(`[Debug] Orders: ${metrics.shopifyOrders}, Net Sales: ${metrics.shopifyRevenue.toFixed(2)}${subDebug ? `, ${subDebug}` : ''}`);
@@ -197,7 +210,7 @@ function hasTag(row, tag) {
 
 // Exportada para poder probar el caso "las dos fuentes vacias" sin tocar las APIs:
 // es el que dejo el reporte en rojo tres dias de agosto de 2026.
-export function calculateMetrics(metaRows, shopifyRows, adToStoreRate) {
+export function calculateMetrics(metaRows, shopifyRows, adToStoreRate, storeFunnel = null) {
   // Todo lo que sale de Meta viene en la moneda de la cuenta de ads.
   const adSpend = sum(metaRows, 'spend');
   const impressions = sum(metaRows, 'impressions');
@@ -236,7 +249,19 @@ export function calculateMetrics(metaRows, shopifyRows, adToStoreRate) {
     count: orderRows.filter(r => hasTag(r, tag)).length,
   }));
 
+  // Embudo de la tienda, con los mismos porcentajes que muestra Shopify en
+  // Analytics: cada paso sobre el TOTAL de sesiones (no sobre el paso anterior).
+  // `conversionRate` es el "Conversion rate" de Shopify. null = no disponible.
+  const pct = (part, total) => (total > 0 ? (part / total) * 100 : 0);
+  const storeFunnelData = storeFunnel && {
+    ...storeFunnel,
+    cartRate: pct(storeFunnel.cartSessions, storeFunnel.sessions),
+    checkoutRate: pct(storeFunnel.checkoutSessions, storeFunnel.sessions),
+    conversionRate: pct(storeFunnel.convertedSessions, storeFunnel.sessions),
+  };
+
   return {
+    storeFunnel: storeFunnelData,
     adSpend, adSpendStore, adToStoreRate,
     impressions, clicks, linkClicks, addToCarts,
     checkoutsInitiated, metaOrders, metaAttributedRevenue,

@@ -48,7 +48,7 @@ async function main() {
     401: 'Token invalido o revocado -> repetir el authorization code grant.',
     402: 'TIENDA CONGELADA por Shopify (factura impagada) o cerrada/pausada. ' +
          'No es el token ni el codigo: lo resuelve el dueno en el admin de Shopify.',
-    403: 'Token sin el scope read_orders / read_all_orders.',
+    403: 'Token sin el scope read_orders / read_all_orders (el embudo ademas pide read_reports).',
     404: 'El dominio no corresponde a ninguna tienda -> revisar SHOPIFY_STORE_DOMAIN.',
     423: 'Tienda bloqueada (fraude o cierre).',
   };
@@ -64,6 +64,11 @@ async function main() {
     // se vea en rojo en Actions.
     process.exit(1);
   }
+
+  // Embudo de conversion (ShopifyQL). Va aparte de las ordenes porque pide otro
+  // scope: `read_reports`. Un ACCESS_DENIED aqui NO rompe el reporte (sale con la
+  // seccion "No disponible"), pero dice exactamente que falta.
+  await probeFunnel(DATE || 'yesterday');
 
   if (!DATE) {
     console.log('[Probe] Sin PROBE_DATE: no se cuentan ordenes.');
@@ -91,6 +96,27 @@ async function main() {
   if (list.status !== 200) {
     console.error(`[Probe] Esta version NO sirve para el reporte. Cuerpo: ${list.body.substring(0, 300)}`);
     process.exit(1);
+  }
+}
+
+async function probeFunnel(date) {
+  const range = date === 'yesterday' ? 'DURING yesterday' : `SINCE ${date} UNTIL ${date}`;
+  const q = 'FROM sessions SHOW sessions, sessions_with_cart_additions, ' +
+    `sessions_that_reached_checkout, sessions_that_completed_checkout ${range}`;
+  const res = await fetch(`https://${DOMAIN}/admin/api/${API}/graphql.json`, {
+    method: 'POST',
+    headers: { 'X-Shopify-Access-Token': TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: 'query($q: String!) { shopifyqlQuery(query: $q) { tableData { rows } parseErrors } }',
+      variables: { q },
+    }),
+  });
+  const body = await res.text().catch(() => '');
+  console.log(`[Probe] ShopifyQL embudo (${date}) -> ${res.status}: ${body.substring(0, 400)}`);
+  if (/ACCESS_DENIED|access denied/i.test(body)) {
+    console.log('[Probe] Lectura: al token le falta read_reports (o la app no tiene acceso a ' +
+      'datos protegidos de clientes). Repetir el authorization code grant con ' +
+      'scope read_orders,read_reports. Ver SETUP.md > "Sobre el token de Shopify".');
   }
 }
 

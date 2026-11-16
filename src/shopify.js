@@ -68,3 +68,65 @@ export async function fetchShopifyOrders() {
     order_tags: order.tags || '',
   }));
 }
+
+// Embudo de conversion "como en Shopify" (Analytics > Conversion rate breakdown):
+// sesiones -> sesiones con anadido al carrito -> sesiones que llegaron al checkout
+// -> sesiones que convirtieron. Sale del dataset `sessions` de ShopifyQL, que
+// cuenta sesiones de la tienda online, no clicks de Meta: es el embudo de TODO el
+// trafico, no solo el pagado.
+//
+// Requiere el scope `read_reports` (ademas de `read_orders`) y Admin API >= 2025-10.
+// ShopifyQL interpreta las fechas en la timezone de la tienda, asi que
+// SINCE/UNTIL con el mismo dia da exactamente el "ayer" local que usa el reporte.
+export const FUNNEL_SHOPIFYQL = (date) =>
+  `FROM sessions SHOW sessions, sessions_with_cart_additions, ` +
+  `sessions_that_reached_checkout, sessions_that_completed_checkout ` +
+  `SINCE ${date} UNTIL ${date}`;
+
+export async function fetchShopifyFunnel(date = getYesterday(), { fetchImpl } = {}) {
+  const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
+  const query = `query($q: String!) {
+    shopifyqlQuery(query: $q) {
+      tableData { columns { name } rows }
+      parseErrors
+    }
+  }`;
+
+  console.log(`[Shopify] Fetching conversion funnel (ShopifyQL sessions)...`);
+  const res = await fetchWithRetry(url, {
+    method: 'POST',
+    headers: {
+      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query, variables: { q: FUNNEL_SHOPIFYQL(date) } }),
+  }, { label: 'Shopify', ...(fetchImpl ? { fetchImpl } : {}) });
+
+  return parseFunnelResponse(await res.json());
+}
+
+// GraphQL contesta 200 aunque falte el scope: el error viene en `errors` (p. ej.
+// ACCESS_DENIED por no tener read_reports). Se convierte en excepcion con un
+// mensaje que dice que hacer.
+export function parseFunnelResponse(json) {
+  if (json.errors?.length) {
+    const msg = json.errors.map(e => e.message).join('; ');
+    const denied = json.errors.some(e => e.extensions?.code === 'ACCESS_DENIED')
+      || /access denied|read_reports/i.test(msg);
+    throw new Error(denied
+      ? `al token de Shopify le falta el scope read_reports (${msg})`
+      : `ShopifyQL: ${msg}`);
+  }
+  const result = json.data?.shopifyqlQuery;
+  if (result?.parseErrors?.length) {
+    throw new Error(`ShopifyQL parse error: ${result.parseErrors.join('; ')}`);
+  }
+  const row = result?.tableData?.rows?.[0] ?? {};
+  const n = (k) => Number(row[k]) || 0;
+  return {
+    sessions: n('sessions'),
+    cartSessions: n('sessions_with_cart_additions'),
+    checkoutSessions: n('sessions_that_reached_checkout'),
+    convertedSessions: n('sessions_that_completed_checkout'),
+  };
+}

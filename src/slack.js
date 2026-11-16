@@ -76,6 +76,25 @@ const NOTA_SIN_ACTIVIDAD =
   `Las dos APIs respondieron correctamente, asi que *no es un problema de tokens* — ` +
   `los ceros son reales. Si no se esperaba, mira si la tienda o las campanas estan en pausa._`;
 
+// Mismo embudo y mismos porcentajes que Shopify > Analytics > "Conversion rate
+// breakdown": cada paso sobre el total de sesiones. Si no se pudo leer, se dice
+// por que en vez de mostrar ceros, que se leerian como un dia sin ventas.
+function buildStoreFunnelLines(metrics) {
+  const header = `:shopping_trolley: *CONVERSIÓN TIENDA (Shopify)*`;
+  const f = metrics.storeFunnel;
+  if (!f) {
+    const reason = metrics.storeFunnelError ? ` — ${metrics.storeFunnelError}` : '';
+    return [header, `  _No disponible${reason}_`];
+  }
+  return [
+    header,
+    `  Sesiones: ${fmtInt(f.sessions)}`,
+    `  Añadido al carrito: ${fmtPct(f.cartRate)} (${fmtInt(f.cartSessions)})`,
+    `  Llegaron al checkout: ${fmtPct(f.checkoutRate)} (${fmtInt(f.checkoutSessions)})`,
+    `  Conversión: ${fmtPct(f.conversionRate)} (${fmtInt(f.convertedSessions)})`,
+  ];
+}
+
 export function formatReport({ date, metrics, diagnosis, hoursSettled, sinActividad = false }) {
   const d = new Date(date);
   const dateStr = d.toLocaleDateString(STORE_LOCALE, {
@@ -109,6 +128,8 @@ export function formatReport({ date, metrics, diagnosis, hoursSettled, sinActivi
     ? `${metrics.merROAS.toFixed(2)}x`
     : `n/d (sin tipo de cambio ${AD_CURRENCY_CODE}→${STORE_CURRENCY_CODE})`;
 
+  lines.push(``, ...buildStoreFunnelLines(metrics));
+
   lines.push(
     ``,
     `:loudspeaker: *PAID ADS (Meta)*`,
@@ -116,7 +137,7 @@ export function formatReport({ date, metrics, diagnosis, hoursSettled, sinActivi
     `  ROAS (Meta): ${metrics.metaROAS.toFixed(2)}x | MER-ROAS: ${merLabel}`,
     `  CPO: ${AD_CURRENCY}${fmt(metrics.cpo)} | Revenue atribuido: ${AD_CURRENCY}${fmt(metrics.metaAttributedRevenue)}`,
     ``,
-    `:mag: *FUNNEL*`,
+    `:mag: *FUNNEL ADS (pixel de Meta)*`,
     `  Impresiones: ${fmtInt(metrics.impressions)}`,
     `  Link Clicks: ${fmtInt(metrics.linkClicks)} (CTR: ${metrics.ctr.toFixed(1)}%)`,
     `  Add to Cart: ${metrics.addToCarts} (${metrics.addToCartRate.toFixed(1)}%)`,
@@ -142,6 +163,10 @@ export function formatReport({ date, metrics, diagnosis, hoursSettled, sinActivi
 
 function fmt(n) {
   return n.toLocaleString(STORE_LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtPct(n) {
+  return `${n.toLocaleString(STORE_LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 }
 
 function fmtInt(n) {

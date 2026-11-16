@@ -11,6 +11,19 @@ function buildSubscriptionLines(metrics) {
     .join('\n');
 }
 
+// Embudo de sesiones de la tienda (todo el trafico, no solo el de Meta). Va
+// separado del embudo del pixel para que el modelo no mezcle las dos bases.
+function buildStoreFunnelBlock(metrics) {
+  const f = metrics.storeFunnel;
+  if (!f) return 'EMBUDO TIENDA (Shopify, sesiones): no disponible hoy.\n';
+  return `EMBUDO TIENDA (Shopify Analytics, todas las sesiones; % sobre el total de sesiones):
+- Sesiones: ${f.sessions}
+- Anadido al carrito: ${f.cartRate.toFixed(2)}% (${f.cartSessions} sesiones)
+- Llegaron al checkout: ${f.checkoutRate.toFixed(2)}% (${f.checkoutSessions} sesiones)
+- Conversion: ${f.conversionRate.toFixed(2)}% (${f.convertedSessions} sesiones)
+`;
+}
+
 function buildRoasInstruction() {
   if (STORE_INDUSTRY && ROAS_BENCHMARK) {
     return `2. Si el ROAS es bueno, malo o normal para un DTC de ${STORE_INDUSTRY} (benchmark: ${ROAS_BENCHMARK})`;
@@ -51,7 +64,7 @@ IMPORTANTE — monedas distintas: la cuenta de Meta factura en ${AD_CURRENCY_COD
 tienda de Shopify en ${STORE_CURRENCY_CODE}. No compares cifras de las dos fuentes sin
 convertir; los ratios ya vienen calculados en la moneda correcta.
 
-METRICAS PAID (Meta Ads, en ${AD_CURRENCY_CODE}):
+METRICAS PAID (Meta Ads, pixel, en ${AD_CURRENCY_CODE}):
 - Gasto: ${AD_CURRENCY}${metrics.adSpend.toFixed(2)} ${AD_CURRENCY_CODE}${spendConverted}
 - Impresiones: ${metrics.impressions}
 - Link Clicks: ${metrics.linkClicks}
@@ -67,6 +80,7 @@ ${merLine}
 - Checkout Rate: ${metrics.checkoutRate.toFixed(2)}%
 - Purchase Rate: ${metrics.purchaseRate.toFixed(2)}%
 
+${buildStoreFunnelBlock(metrics)}
 METRICAS SHOPIFY (fuente de verdad, en ${STORE_CURRENCY_CODE}):
 - Revenue neto: ${STORE_CURRENCY}${metrics.shopifyRevenue.toFixed(2)} ${STORE_CURRENCY_CODE}
 - Ordenes reales: ${metrics.shopifyOrders}

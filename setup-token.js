@@ -7,7 +7,8 @@ const CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET;
 const SHOP = process.env.SHOPIFY_STORE_DOMAIN;
 const PORT = 3000;
 const REDIRECT_URI = `http://localhost:${PORT}/callback`;
-const SCOPES = 'read_orders';
+// read_reports: ShopifyQL (embudo de sesiones/carrito/checkout/conversion).
+const SCOPES = 'read_orders,read_reports';
 
 if (!CLIENT_ID || !CLIENT_SECRET || !SHOP) {
   console.error('\n❌ Missing environment variables. Run with:');

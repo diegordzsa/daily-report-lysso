@@ -20,7 +20,7 @@ process.env.STORE_LOCALE = 'es-ES';
 process.env.STORE_TIMEZONE = 'Europe/Madrid';
 
 const { calculateMetrics } = await import('./report.js');
-const { formatReport, sendToSlack } = await import('./slack.js');
+const { formatReport, sendToSlack, toSlackMrkdwn } = await import('./slack.js');
 const { parseFunnelResponse, FUNNEL_SHOPIFYQL } = await import('./shopify.js');
 
 const DIAGNOSTICO = 'Diagnostico de prueba.';
@@ -177,13 +177,13 @@ test('el gasto de las dos cuentas se suma y se desglosa por cuenta', () => {
     { name: 'EASY_02', spend: 100 }, { name: 'EASY_04', spend: 50.5 },
   ]);
   const texto = formatReport({ date: '2026-11-24', metrics, diagnosis: DIAGNOSTICO, hoursSettled: 11 });
-  assert.ok(texto.includes('EASY_02: $100,00 | EASY_04: $50,50'));
+  assert.ok(texto.includes('  • *EASY_02*: $100,00\n  • *EASY_04*: $50,50'));
 });
 
 test('con una sola cuenta no se muestra desglose', () => {
   const metrics = calculateMetrics([{ account_name: 'EASY_02', spend: 100 }], [], 1);
   const texto = formatReport({ date: '2026-11-24', metrics, diagnosis: DIAGNOSTICO, hoursSettled: 11 });
-  assert.ok(!texto.includes('EASY_02:'));
+  assert.ok(!texto.includes('*EASY_02*'));
 });
 
 // --- Zonas horarias distintas (EASY_04 en Mexico) -----------------------------
@@ -230,4 +230,25 @@ test('arrancar unos segundos antes de las 3 h espera en vez de abortar', async (
   assert.equal(waitMsToReachMinimum(1, 3, 30), 0);
   // Justo en el borde del margen: espera.
   assert.ok(waitMsToReachMinimum(2.5, 3, 30) > 0);
+});
+
+// --- Diagnostico en mrkdwn de Slack ------------------------------------------
+
+test('las negritas de Markdown del diagnostico pasan al formato de Slack', () => {
+  assert.equal(toSlackMrkdwn('El **checkout** cae y el __ROAS__ baja'),
+    'El *checkout* cae y el *ROAS* baja');
+  assert.equal(toSlackMrkdwn('## Diagnostico'), '*Diagnostico*');
+  assert.equal(toSlackMrkdwn('* uno\n- dos\n1. tres'), '• uno\n• dos\n1. tres');
+  assert.equal(toSlackMrkdwn('- **Accion:** pausar'), '• *Accion:* pausar');
+  assert.equal(toSlackMrkdwn('~~viejo~~'), '~viejo~');
+  // Lo que ya esta en formato Slack no se toca.
+  assert.equal(toSlackMrkdwn('Gasto *alto* hoy'), 'Gasto *alto* hoy');
+});
+
+test('el reporte no deja ** literales del diagnostico', () => {
+  const metrics = calculateMetrics([], [], 1);
+  const texto = formatReport({ date: '2026-11-24', metrics,
+    diagnosis: '1. **Punto debil:** checkout\n2. **ROAS** normal' });
+  assert.ok(!texto.includes('**'));
+  assert.ok(texto.includes('  1. *Punto debil:* checkout'));
 });

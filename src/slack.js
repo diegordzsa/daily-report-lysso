@@ -175,7 +175,7 @@ export function formatReport({
     `:loudspeaker: *PAID ADS (Meta)*`,
     `  Gasto: ${AD_CURRENCY}${fmt(metrics.adSpend)}${spendConverted}`,
     ...(metrics.spendByAccount?.length > 1
-      ? [`  ${metrics.spendByAccount.map(a => `${a.name}: ${AD_CURRENCY}${fmt(a.spend)}`).join(' | ')}`]
+      ? metrics.spendByAccount.map(a => `  • *${a.name}*: ${AD_CURRENCY}${fmt(a.spend)}`)
       : []),
     `  ROAS (Meta): ${metrics.metaROAS.toFixed(2)}x | MER-ROAS: ${merLabel}`,
     `  CPO: ${AD_CURRENCY}${fmt(metrics.cpo)} | Revenue atribuido: ${AD_CURRENCY}${fmt(metrics.metaAttributedRevenue)}`,
@@ -188,7 +188,7 @@ export function formatReport({
     `  Compras: ${metrics.metaOrders} (${metrics.purchaseRate.toFixed(1)}%)`,
     ``,
     `:robot_face: *DIAGNOSTICO (Claude)*`,
-    ...diagnosis.split('\n').map(line => `  ${line}`),
+    ...toSlackMrkdwn(diagnosis).split('\n').map(line => `  ${line}`),
     ``,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
     ...buildZoneNotes(date, adAccounts),
@@ -205,6 +205,23 @@ export function formatReport({
 
 function fmt(n) {
   return n.toLocaleString(STORE_LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Claude responde en Markdown, pero Slack usa su propio mrkdwn: `**x**` sale con
+// los asteriscos literales. Se traduce lo que el modelo suele usar: negritas
+// (`**x**`, `__x__`) a `*x*`, titulos (`## x`) a una linea en negrita, tachado
+// (`~~x~~`) a `~x~` y vinetas `* ` / `- ` a `• `. Las vinetas van antes que las
+// negritas para no confundir un `* ` de lista con un asterisco de Slack.
+export function toSlackMrkdwn(text) {
+  return String(text)
+    .split('\n')
+    .map(line => line
+      .replace(/^(\s*)#{1,6}\s+(.+?)\s*#*\s*$/, '$1**$2**')
+      .replace(/^(\s*)[*-]\s+/, '$1• '))
+    .join('\n')
+    .replace(/\*\*(.+?)\*\*/g, '*$1*')
+    .replace(/__(.+?)__/g, '*$1*')
+    .replace(/~~(.+?)~~/g, '~$1~');
 }
 
 function fmtPct(n) {

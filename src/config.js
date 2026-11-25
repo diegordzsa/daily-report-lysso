@@ -67,6 +67,11 @@ export const AD_CURRENCY_CODE = optional('AD_CURRENCY_CODE', 'USD');
 export const META_ACCOUNT_TIMEZONE = optional('META_ACCOUNT_TIMEZONE', 'Europe/Madrid');
 export const STORE_TIMEZONE = optional('STORE_TIMEZONE', 'Europe/Madrid');
 export const MIN_HOURS_AFTER_CLOSE = numeric('MIN_HOURS_AFTER_CLOSE', 3);
+// Si al arrancar faltan como mucho estos minutos para llegar al minimo, se espera
+// en vez de abortar. EASY_04 (Mexico, cierra 06:00 UTC) llega al disparo de las
+// 09:00 UTC con 3.01 h: unos segundos de adelanto del cron bastaban para publicar
+// "NO publicado" en el canal y dejar el reporte al respaldo, horas despues.
+export const MAX_WAIT_MINUTES = numeric('MAX_WAIT_MINUTES', 30);
 
 // --- Avisos de fallo ---------------------------------------------------------
 // El mismo fallo se reintenta hasta tres veces al dia (entrega + dos respaldos) y
@@ -82,7 +87,10 @@ export const ATTEMPT_LABEL = optional('ATTEMPT_LABEL');
 export const STORE_LOCALE = optional('STORE_LOCALE', 'es-ES');
 export const STORE_INDUSTRY = optional('STORE_INDUSTRY');
 export const ROAS_BENCHMARK = optional('ROAS_BENCHMARK');
-export const REPORT_TIME_LABEL = optional('REPORT_TIME_LABEL', '9:00 (Madrid)');
+// Vacio = el pie dice la hora REAL de envio en STORE_TIMEZONE. Un texto fijo
+// ('11:00 (Madrid)') mentia la mitad del ano: el disparo es a las 09:00 UTC, que
+// son las 11:00 en verano pero las 10:00 en invierno. Solo para forzar un texto.
+export const REPORT_TIME_LABEL = optional('REPORT_TIME_LABEL');
 // Verificadas contra las cuentas reales el 2026-08-17 con los probes (`api_version`):
 // Meta v26.0 devolvio insights del 11-ago (spend 194.59 USD, 3081 impresiones) y
 // Shopify 2026-07 sirvio `orders.json` con los mismos `fields` que usa el reporte.

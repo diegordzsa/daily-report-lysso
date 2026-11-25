@@ -8,7 +8,7 @@ import { sendToSlack, formatReport } from './slack.js';
 import {
   STORE_NAME, META_ACCESS_TOKEN,
   SLACK_WEBHOOK_URL, SUBSCRIPTION_TAGS,
-  META_ACCOUNT_TIMEZONE, STORE_TIMEZONE, MIN_HOURS_AFTER_CLOSE,
+  META_ACCOUNT_TIMEZONE, STORE_TIMEZONE, MIN_HOURS_AFTER_CLOSE, MAX_WAIT_MINUTES,
   AD_CURRENCY_CODE, STORE_CURRENCY_CODE,
   ALERT_ON_FAILURE, ATTEMPT_LABEL,
 } from './config.js';
@@ -60,6 +60,8 @@ async function assertMetaDataIsSettled(reportDate) {
         `Corrige el workflow: el gasto convertido y el MER-ROAS estan mal.`
       );
     }
+    acc.label = label;
+    acc.zone = tz;
     const h = hoursSinceDayClose(reportDate, tz);
     console.log(`[Freshness] ${label}: ${reportDate} cerro hace ${h.toFixed(2)} h en ${tz}`);
     if (h < hours) { hours = h; timeZone = tz; }
@@ -88,7 +90,23 @@ async function assertMetaDataIsSettled(reportDate) {
     `(minimo requerido: ${MIN_HOURS_AFTER_CLOSE} h)`
   );
 
-  if (hours >= MIN_HOURS_AFTER_CLOSE) return { timeZone, hours };
+  // Margen: si solo faltan unos minutos, esperar es mejor que abortar. Abortar
+  // publica un aviso en el canal (la entrega si avisa) y el reporte acaba saliendo
+  // con el respaldo, con su jitter de horas.
+  const esperaMs = waitMsToReachMinimum(hours);
+  if (esperaMs > 0) {
+    const faltanMin = (MIN_HOURS_AFTER_CLOSE - hours) * 60;
+    console.log(
+      `[Freshness] Faltan ${faltanMin.toFixed(1)} min para el minimo de ${MIN_HOURS_AFTER_CLOSE} h ` +
+      `en ${timeZone}: se espera ${(esperaMs / 60000).toFixed(1)} min en vez de abortar ` +
+      `(margen MAX_WAIT_MINUTES=${MAX_WAIT_MINUTES}).`
+    );
+    await new Promise(resolve => setTimeout(resolve, esperaMs));
+    hours = hoursSinceDayClose(reportDate, timeZone);
+    console.log(`[Freshness] Tras la espera: ${hours.toFixed(2)} h desde el cierre en ${timeZone}.`);
+  }
+
+  if (hours >= MIN_HOURS_AFTER_CLOSE) return { timeZone, hours, accounts };
 
   const reason = hours < 0
     ? `el dia todavia no termina en ${timeZone} (faltan ${(-hours).toFixed(1)} h)`
@@ -105,6 +123,15 @@ async function assertMetaDataIsSettled(reportDate) {
       `(un gasto subestimado infla ROAS y MER).`,
   });
   process.exit(1);
+}
+
+// Cuanto esperar (ms) para llegar al minimo de horas post-cierre. 0 = no esperar:
+// o ya se llego, o falta demasiado y toca abortar. Lleva 30 s de colchon para no
+// volver a quedarse a un segundo del limite tras la espera.
+export function waitMsToReachMinimum(hours, minHours = MIN_HOURS_AFTER_CLOSE, maxWaitMin = MAX_WAIT_MINUTES) {
+  const faltanMin = (minHours - hours) * 60;
+  if (faltanMin <= 0 || faltanMin > maxWaitMin) return 0;
+  return Math.ceil(faltanMin * 60 + 30) * 1000;
 }
 
 // Tipo de cambio de la moneda de la cuenta de ads a la moneda de la tienda.
@@ -130,7 +157,7 @@ async function fetchAdToStoreRate() {
 
 async function run() {
   const yesterday = getYesterday();
-  const { hours: hoursSettled } = await assertMetaDataIsSettled(yesterday);
+  const { accounts: adAccounts } = await assertMetaDataIsSettled(yesterday);
 
   // El embudo de sesiones de Shopify es un extra: si falla (p. ej. el token aun
   // no tiene `read_reports`) el reporte sale igual, con la seccion marcada como
@@ -165,6 +192,21 @@ async function run() {
         (explanation ? `\n\n:wrench: *Que hacer:* ${explanation}` : ''),
     });
     process.exit(1);
+  }
+
+  // Una linea por cuenta con su gasto y las horas que llevaba cerrado su dia al
+  // leerlo. Es la muestra para medir la deriva de consolidacion: se cruza contra
+  // Ads Manager dias despues (sobre todo EASY_04, que se lee a ~3 h del cierre).
+  // En Slack no van las horas: solo aqui.
+  for (const acc of adAccounts) {
+    const spend = metaData
+      .filter(r => String(r.account_id) === String(acc.accountId))
+      .reduce((s, r) => s + (Number(r.spend) || 0), 0);
+    console.log(
+      `[Deriva] ${acc.label} ${yesterday} tz=${acc.zone} ` +
+      `h=${hoursSinceDayClose(yesterday, acc.zone).toFixed(2)} ` +
+      `spend=${spend.toFixed(2)} ${acc.currency ?? AD_CURRENCY_CODE}`
+    );
   }
 
   console.log(`[Debug] Yesterday: ${yesterday}`);
@@ -212,7 +254,7 @@ async function run() {
     date: yesterday,
     metrics,
     diagnosis,
-    hoursSettled,
+    adAccounts: adAccounts.map(a => ({ name: a.label, timeZone: a.zone })),
     sinActividad,
   });
 

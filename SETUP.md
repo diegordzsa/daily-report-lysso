@@ -14,6 +14,7 @@ otro repo. Si algo de aqui cambia, hay que volver a medirlo, no adivinarlo.
 |---|---|---|
 | Cuentas Meta | `EASY_02` + `EASY_04` (desde nov-2026, mismo BM *Radio Midlands*) | `GET /act_<id>?fields=name` |
 | TZ cuenta Meta | `Europe/Madrid` (**con DST**) | `timezone_name` |
+| TZ EASY_04 | `Mexico/General` (UTC−6, **sin DST**): cierra 06:00 UTC = 07:00 Madrid invierno / 08:00 verano | probe 2026-11 |
 | Offset en verano | UTC+2 | `timezone_offset_hours_utc` |
 | Moneda Meta | **USD** | `currency` |
 | Tienda Shopify | `SKIN+ EUR` / `lyssoderma.com` | `GET /shop.json` |
@@ -21,7 +22,7 @@ otro repo. Si algo de aqui cambia, hay que volver a medirlo, no adivinarlo.
 | Moneda Shopify | **EUR** | `currency`, `money_format` |
 | Cierre del dia | 00:00 Madrid = 22:00 UTC verano / 23:00 UTC invierno | calculado |
 | `MIN_HOURS_AFTER_CLOSE` | 3 | politica |
-| Entrega | **11:00 Europe/Madrid** = 11 h post-cierre | medido en los logs, ver abajo |
+| Entrega | **09:00 UTC** = 11:00 Madrid verano / 10:00 invierno. EASY_02 a 10-11 h post-cierre, **EASY_04 a ~3.01 h** | medido en los logs, ver abajo |
 | Deriva medida a 11.1-12.8 h | −0.00 % a −0.18 % | logs vs. consolidado |
 | Retraso del cron de GitHub | +2 h 05 min a +3 h 49 min | 7 ejecuciones |
 
@@ -349,6 +350,26 @@ por cuenta. Reglas:
   `gh workflow run meta-freshness-probe.yml --ref main`. El log empieza con la
   lista de cuentas visibles (`nombre | id | moneda | tz`).
 
+### EASY_04 esta en hora de Mexico
+
+EASY_04 (`Mexico/General`, UTC−6 sin horario de verano) cuenta **su** dia, no el de
+la tienda: en invierno va de 07:00 a 07:00 de Madrid. Se decidio **no** recomponer
+su gasto en hora de Madrid (Meta solo lo permitiria cosiendo el desglose por horas
+de dos dias, y sus cifras dejarian de cuadrar con su Ads Manager). En su lugar:
+
+- **Nota en Slack**, automatica para cualquier cuenta fuera de `STORE_TIMEZONE`:
+  *"EASY_04 cuenta el día en hora de México (cierra 07:00 Madrid); su gasto puede
+  ajustarse ligeramente"*. La hora de cierre se calcula para cada fecha.
+- **Horas de consolidacion, solo en el log**: una linea por cuenta,
+  `[Deriva] EASY_04 2026-11-24 tz=Mexico/General h=3.02 spend=851.86 USD`.
+  Cruzarla dias despues contra Ads Manager: si la diferencia de EASY_04 pasa de
+  ~0.5 %, retrasar la entrega o subir `MIN_HOURS_AFTER_CLOSE`.
+- **Margen en el limite**: el disparo de las 09:00 UTC lee EASY_04 a ~3.01 h, justo
+  sobre el minimo de 3 h. Si el cron arrancara unos segundos antes, antes se
+  publicaba "NO publicado" y el reporte quedaba para el respaldo (horas tarde).
+  Ahora, si faltan <= `MAX_WAIT_MINUTES` (30), el job **espera** lo que falte + 30 s
+  y sigue; si falta mas, aborta como siempre.
+
 ### Sobre el token de Shopify
 
 La app de Shopify y la tienda estan en **organizaciones distintas**, asi que el
@@ -393,7 +414,8 @@ Estan en `.github/workflows/daily-report.yml`, con los valores medidos.
 | `META_ACCOUNT_TIMEZONE` | `Europe/Madrid` | Fallback si falla la lectura de la API |
 | `STORE_TIMEZONE` | `Europe/Madrid` | Decide que dia es "ayer" |
 | `MIN_HOURS_AFTER_CLOSE` | `3` | Horas minimas tras el cierre para publicar |
-| `REPORT_TIME_LABEL` | `11:00 (Madrid)` | Hora **real** de envio, en el pie |
+| `REPORT_TIME_LABEL` | _(vacio)_ | Vacio = el pie dice la hora **real** de envio en Madrid. Solo para forzar un texto |
+| `MAX_WAIT_MINUTES` | `30` (default) | Si faltan como mucho estos minutos para `MIN_HOURS_AFTER_CLOSE`, espera en vez de abortar |
 | `STORE_CURRENCY` / `_CODE` | `€` / `EUR` | Moneda de la tienda (revenue, AOV) |
 | `AD_CURRENCY` / `_CODE` | `$` / `USD` | Moneda de la cuenta de ads (gasto, CPO) |
 | `STORE_LOCALE` | `es-ES` | Formato de numeros (`1.234,56`) |

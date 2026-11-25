@@ -1,7 +1,8 @@
 import {
   STORE_NAME, STORE_CURRENCY, STORE_CURRENCY_CODE, AD_CURRENCY, AD_CURRENCY_CODE,
-  STORE_LOCALE, REPORT_TIME_LABEL, SUBSCRIPTION_TAGS,
+  STORE_LOCALE, REPORT_TIME_LABEL, SUBSCRIPTION_TAGS, STORE_TIMEZONE,
 } from './config.js';
+import { dayCloseInstant } from './freshness.js';
 
 // Con DRY_RUN=1 el reporte se imprime en el log en vez de publicarse. Sirve para
 // probar el pipeline completo contra las APIs reales sin mandar un duplicado al
@@ -95,7 +96,46 @@ function buildStoreFunnelLines(metrics) {
   ];
 }
 
-export function formatReport({ date, metrics, diagnosis, hoursSettled, sinActividad = false }) {
+// Nombre legible de una zona horaria para la nota. Lo que no esta aqui sale con
+// su ultimo tramo ("America/Bogota" -> "Bogota").
+const ZONE_LABELS = {
+  'Mexico/General': 'México',
+  'America/Mexico_City': 'México',
+  'Europe/Madrid': 'Madrid',
+};
+function zoneLabel(tz) {
+  return ZONE_LABELS[tz] || tz.split('/').pop().replace(/_/g, ' ');
+}
+
+function timeIn(instant, timeZone) {
+  return new Date(instant).toLocaleTimeString(STORE_LOCALE, {
+    timeZone, hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// Una cuenta en otra zona horaria cuenta "su" dia, no el de la tienda: EASY_04
+// (Mexico) va de 07:00 a 07:00 de Madrid en invierno. Se dice en el reporte para
+// que nadie compare horas sin saberlo. La hora de cierre se calcula para la fecha
+// del reporte (cambia con el horario de verano de Madrid). Version corta a
+// proposito: las horas de consolidacion van solo en el log.
+function buildZoneNotes(date, adAccounts = []) {
+  const storeCity = zoneLabel(STORE_TIMEZONE);
+  return adAccounts
+    .filter(a => a.timeZone && a.timeZone !== STORE_TIMEZONE)
+    .map(a =>
+      `_${a.name} cuenta el día en hora de ${zoneLabel(a.timeZone)} ` +
+      `(cierra ${timeIn(dayCloseInstant(date, a.timeZone), STORE_TIMEZONE)} ${storeCity}); ` +
+      `su gasto puede ajustarse ligeramente_`);
+}
+
+function sentAtLabel(sentAt) {
+  if (REPORT_TIME_LABEL) return REPORT_TIME_LABEL;
+  return `${timeIn(sentAt, STORE_TIMEZONE)} (${zoneLabel(STORE_TIMEZONE)})`;
+}
+
+export function formatReport({
+  date, metrics, diagnosis, sinActividad = false, adAccounts = [], sentAt = new Date(),
+}) {
   const d = new Date(date);
   const dateStr = d.toLocaleDateString(STORE_LOCALE, {
     day: 'numeric', month: 'long', year: 'numeric',
@@ -151,9 +191,8 @@ export function formatReport({ date, metrics, diagnosis, hoursSettled, sinActivi
     ...diagnosis.split('\n').map(line => `  ${line}`),
     ``,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-    `_Enviado a las ${REPORT_TIME_LABEL}` +
-      (hoursSettled != null ? ` · gasto de Meta consolidado ${hoursSettled.toFixed(1)} h tras el cierre del dia` : '') +
-      `_`,
+    ...buildZoneNotes(date, adAccounts),
+    `_Enviado a las ${sentAtLabel(sentAt)}_`,
     `_Moneda: tienda ${STORE_CURRENCY_CODE} · cuenta de ads ${AD_CURRENCY_CODE}` +
       (metrics.adToStoreRate != null && metrics.adToStoreRate !== 1
         ? ` (1 ${AD_CURRENCY_CODE} = ${metrics.adToStoreRate.toFixed(4)} ${STORE_CURRENCY_CODE})`

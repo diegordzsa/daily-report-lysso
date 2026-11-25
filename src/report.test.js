@@ -17,7 +17,7 @@ process.env.SHOPIFY_ACCESS_TOKEN = 'shpca_test';
 process.env.ANTHROPIC_API_KEY = 'sk-test';
 process.env.SLACK_WEBHOOK_URL = 'https://hooks.slack.test/nada';
 process.env.STORE_LOCALE = 'es-ES';
-process.env.REPORT_TIME_LABEL = '11:00 (Madrid)';
+process.env.STORE_TIMEZONE = 'Europe/Madrid';
 
 const { calculateMetrics } = await import('./report.js');
 const { formatReport, sendToSlack } = await import('./slack.js');
@@ -184,4 +184,50 @@ test('con una sola cuenta no se muestra desglose', () => {
   const metrics = calculateMetrics([{ account_name: 'EASY_02', spend: 100 }], [], 1);
   const texto = formatReport({ date: '2026-11-24', metrics, diagnosis: DIAGNOSTICO, hoursSettled: 11 });
   assert.ok(!texto.includes('EASY_02:'));
+});
+
+// --- Zonas horarias distintas (EASY_04 en Mexico) -----------------------------
+
+const CUENTAS = [
+  { name: 'EASY_02', timeZone: 'Europe/Madrid' },
+  { name: 'EASY_04', timeZone: 'Mexico/General' },
+];
+
+test('nota corta para la cuenta en hora de Mexico, con el cierre en hora de Madrid', () => {
+  const metrics = calculateMetrics([], [], 1);
+  const texto = formatReport({ date: '2026-11-24', metrics, diagnosis: DIAGNOSTICO, adAccounts: CUENTAS });
+  assert.ok(texto.includes(
+    'EASY_04 cuenta el día en hora de México (cierra 07:00 Madrid); su gasto puede ajustarse ligeramente'));
+  // EASY_02 esta en la zona de la tienda: sin nota.
+  assert.ok(!texto.includes('EASY_02 cuenta el día'));
+  // Las horas de consolidacion solo van en el log.
+  assert.ok(!texto.includes('consolidado'));
+});
+
+test('en verano EASY_04 cierra a las 08:00 de Madrid', () => {
+  const metrics = calculateMetrics([], [], 1);
+  const texto = formatReport({ date: '2026-07-15', metrics, diagnosis: DIAGNOSTICO, adAccounts: CUENTAS });
+  assert.ok(texto.includes('(cierra 08:00 Madrid)'));
+});
+
+test('el pie dice la hora real de envio en Madrid, no un texto fijo', () => {
+  const metrics = calculateMetrics([], [], 1);
+  const invierno = formatReport({ date: '2026-11-24', metrics, diagnosis: DIAGNOSTICO,
+    sentAt: new Date('2026-11-25T09:01:00Z') });
+  assert.ok(invierno.includes('_Enviado a las 10:01 (Madrid)_'));
+  const verano = formatReport({ date: '2026-07-15', metrics, diagnosis: DIAGNOSTICO,
+    sentAt: new Date('2026-07-16T09:01:00Z') });
+  assert.ok(verano.includes('_Enviado a las 11:01 (Madrid)_'));
+});
+
+test('arrancar unos segundos antes de las 3 h espera en vez de abortar', async () => {
+  const { waitMsToReachMinimum } = await import('./report.js');
+  // 3 h menos 20 s: espera 20 s + 30 s de colchon.
+  assert.equal(waitMsToReachMinimum(3 - 20 / 3600, 3, 30), 50000);
+  // Ya pasado el minimo (el caso normal, 3.01 h): no espera.
+  assert.equal(waitMsToReachMinimum(3.011, 3, 30), 0);
+  // Faltan 2 h: no tiene sentido esperar, se aborta como siempre.
+  assert.equal(waitMsToReachMinimum(1, 3, 30), 0);
+  // Justo en el borde del margen: espera.
+  assert.ok(waitMsToReachMinimum(2.5, 3, 30) > 0);
 });

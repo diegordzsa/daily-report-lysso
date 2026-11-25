@@ -134,6 +134,9 @@ export function formatReport({ date, metrics, diagnosis, hoursSettled, sinActivi
     ``,
     `:loudspeaker: *PAID ADS (Meta)*`,
     `  Gasto: ${AD_CURRENCY}${fmt(metrics.adSpend)}${spendConverted}`,
+    ...(metrics.spendByAccount?.length > 1
+      ? [`  ${metrics.spendByAccount.map(a => `${a.name}: ${AD_CURRENCY}${fmt(a.spend)}`).join(' | ')}`]
+      : []),
     `  ROAS (Meta): ${metrics.metaROAS.toFixed(2)}x | MER-ROAS: ${merLabel}`,
     `  CPO: ${AD_CURRENCY}${fmt(metrics.cpo)} | Revenue atribuido: ${AD_CURRENCY}${fmt(metrics.metaAttributedRevenue)}`,
     ``,

@@ -36,7 +36,15 @@ function parseSubscriptionTags(raw) {
 
 export const STORE_NAME = required('STORE_NAME');
 export const META_ACCESS_TOKEN = required('META_ACCESS_TOKEN');
-export const META_AD_ACCOUNT_ID = required('META_AD_ACCOUNT_ID');
+// Una o varias cuentas de Meta separadas por coma ("123,456"), con o sin `act_`.
+// Lysso gasta en EASY_02 y, desde noviembre de 2026, tambien en EASY_04 (mismo BM,
+// Radio Midlands). El reporte suma todas: el gasto de la tienda es el de las dos.
+export function parseAdAccountIds(raw) {
+  return [...new Set(String(raw).split(',')
+    .map(id => id.trim().replace(/^act_/, ''))
+    .filter(Boolean))];
+}
+export const META_AD_ACCOUNT_IDS = parseAdAccountIds(required('META_AD_ACCOUNT_ID'));
 export const SHOPIFY_STORE_DOMAIN = required('SHOPIFY_STORE_DOMAIN');
 export const SHOPIFY_ACCESS_TOKEN = required('SHOPIFY_ACCESS_TOKEN');
 export const ANTHROPIC_API_KEY = required('ANTHROPIC_API_KEY');

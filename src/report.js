@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'node:url';
 import { fetchShopifyOrders, fetchShopifyFunnel, getYesterday } from './shopify.js';
-import { fetchMetaAds, fetchAdAccountInfo } from './meta.js';
+import { fetchMetaAds, fetchAllAdAccountInfo } from './meta.js';
 import { hoursSinceDayClose } from './freshness.js';
 import { explainHttpError } from './http.js';
 import { generateDiagnosis } from './claude.js';
@@ -33,29 +33,55 @@ async function avisar({ emoji, titulo, fecha, cuerpo }) {
 // timezone de la cuenta. Publicar antes de tiempo subestima el spend, lo que
 // infla ROAS y MER. Preferimos no publicar a publicar cifras incorrectas.
 async function assertMetaDataIsSettled(reportDate) {
-  const { timeZone: liveTimeZone, currency } = await fetchAdAccountInfo(META_ACCESS_TOKEN);
-  const timeZone = liveTimeZone || META_ACCOUNT_TIMEZONE;
+  const accounts = await fetchAllAdAccountInfo(META_ACCESS_TOKEN);
 
-  if (!liveTimeZone) {
-    console.warn(`[Freshness] Usando fallback META_ACCOUNT_TIMEZONE=${timeZone}`);
-  }
-  if (timeZone !== STORE_TIMEZONE) {
-    console.warn(
-      `[Freshness] La cuenta de Meta (${timeZone}) y la tienda (${STORE_TIMEZONE}) estan en ` +
-      `zonas distintas: "ayer" puede no ser el mismo dia en las dos fuentes.`
-    );
-  }
-  // La moneda de la cuenta decide en que unidad viene el gasto. Si cambia y no se
-  // actualiza AD_CURRENCY_CODE, la conversion a moneda de tienda queda muda pero
-  // equivocada — asi que se avisa fuerte.
-  if (currency && currency !== AD_CURRENCY_CODE) {
-    console.error(
-      `[Moneda] La cuenta de Meta factura en ${currency} pero AD_CURRENCY_CODE=${AD_CURRENCY_CODE}. ` +
-      `Corrige el workflow: el gasto convertido y el MER-ROAS estan mal.`
-    );
+  // Con varias cuentas, manda la que cierra el dia MAS TARDE: hasta que esa no
+  // consolida, el gasto total esta subestimado.
+  let timeZone = null;
+  let hours = Infinity;
+  for (const acc of accounts) {
+    const label = acc.name || `act_${acc.accountId}`;
+    const tz = acc.timeZone || META_ACCOUNT_TIMEZONE;
+    if (!acc.timeZone) {
+      console.warn(`[Freshness] ${label}: usando fallback META_ACCOUNT_TIMEZONE=${tz}`);
+    }
+    if (tz !== STORE_TIMEZONE) {
+      console.warn(
+        `[Freshness] La cuenta ${label} (${tz}) y la tienda (${STORE_TIMEZONE}) estan en ` +
+        `zonas distintas: "ayer" puede no ser el mismo dia en las dos fuentes.`
+      );
+    }
+    // La moneda de la cuenta decide en que unidad viene el gasto. Si cambia y no se
+    // actualiza AD_CURRENCY_CODE, la conversion a moneda de tienda queda muda pero
+    // equivocada — asi que se avisa fuerte.
+    if (acc.currency && acc.currency !== AD_CURRENCY_CODE) {
+      console.error(
+        `[Moneda] La cuenta ${label} factura en ${acc.currency} pero AD_CURRENCY_CODE=${AD_CURRENCY_CODE}. ` +
+        `Corrige el workflow: el gasto convertido y el MER-ROAS estan mal.`
+      );
+    }
+    const h = hoursSinceDayClose(reportDate, tz);
+    console.log(`[Freshness] ${label}: ${reportDate} cerro hace ${h.toFixed(2)} h en ${tz}`);
+    if (h < hours) { hours = h; timeZone = tz; }
   }
 
-  const hours = hoursSinceDayClose(reportDate, timeZone);
+  // Sumar gasto de dos cuentas que facturan en monedas distintas da un numero
+  // sin unidad. Mejor no publicar y decir por que.
+  const currencies = [...new Set(accounts.map(a => a.currency).filter(Boolean))];
+  if (currencies.length > 1) {
+    const detalle = accounts.map(a => `${a.name || `act_${a.accountId}`}: ${a.currency ?? '?'}`).join(', ');
+    console.error(`[Moneda] Las cuentas de Meta facturan en monedas distintas (${detalle}).`);
+    await avisar({
+      emoji: ':warning:',
+      titulo: 'Reporte Diario NO publicado',
+      fecha: reportDate,
+      cuerpo:
+        `Las cuentas de Meta facturan en monedas distintas (${detalle}) y el reporte ` +
+        `solo sabe sumar gasto en una (${AD_CURRENCY_CODE}). Hay que ajustar el codigo ` +
+        `antes de sumarlas.`,
+    });
+    process.exit(1);
+  }
 
   console.log(
     `[Freshness] ${reportDate} cerro hace ${hours.toFixed(2)} h en ${timeZone} ` +
@@ -221,6 +247,16 @@ export function calculateMetrics(metaRows, shopifyRows, adToStoreRate, storeFunn
   const metaOrders = sum(metaRows, 'actions_offsite_conversion_fb_pixel_purchase');
   const metaAttributedRevenue = sum(metaRows, 'action_values_offsite_conversion_fb_pixel_purchase');
 
+  // Desglose del gasto por cuenta (EASY_02, EASY_04...), en el orden en que
+  // llegan. Con una sola cuenta el reporte no lo muestra.
+  const spendByAccount = [];
+  for (const row of metaRows) {
+    const name = row.account_name || 'Meta';
+    const entry = spendByAccount.find(e => e.name === name);
+    if (entry) entry.spend += Number(row.spend) || 0;
+    else spendByAccount.push({ name, spend: Number(row.spend) || 0 });
+  }
+
   // Gasto y revenue atribuido estan los dos en moneda de ads: el ratio es valido
   // sin convertir nada.
   const metaROAS = adSpend > 0 ? metaAttributedRevenue / adSpend : 0;
@@ -262,7 +298,7 @@ export function calculateMetrics(metaRows, shopifyRows, adToStoreRate, storeFunn
 
   return {
     storeFunnel: storeFunnelData,
-    adSpend, adSpendStore, adToStoreRate,
+    adSpend, adSpendStore, adToStoreRate, spendByAccount,
     impressions, clicks, linkClicks, addToCarts,
     checkoutsInitiated, metaOrders, metaAttributedRevenue,
     metaROAS, merROAS, cpo, ctr, addToCartRate, checkoutRate, purchaseRate,

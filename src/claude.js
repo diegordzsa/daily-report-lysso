@@ -65,7 +65,11 @@ tienda de Shopify en ${STORE_CURRENCY_CODE}. No compares cifras de las dos fuent
 convertir; los ratios ya vienen calculados en la moneda correcta.
 
 METRICAS PAID (Meta Ads, pixel, en ${AD_CURRENCY_CODE}):
-- Gasto: ${AD_CURRENCY}${metrics.adSpend.toFixed(2)} ${AD_CURRENCY_CODE}${spendConverted}
+- Gasto (todas las cuentas): ${AD_CURRENCY}${metrics.adSpend.toFixed(2)} ${AD_CURRENCY_CODE}${spendConverted}${
+  metrics.spendByAccount?.length > 1
+    ? `
+- Gasto por cuenta: ${metrics.spendByAccount.map(a => `${a.name} ${AD_CURRENCY}${a.spend.toFixed(2)}`).join(', ')}`
+    : ''}
 - Impresiones: ${metrics.impressions}
 - Link Clicks: ${metrics.linkClicks}
 - Add to Carts: ${metrics.addToCarts}

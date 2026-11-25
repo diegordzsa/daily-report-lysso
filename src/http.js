@@ -52,7 +52,9 @@ const EXPLANATIONS = {
   Meta: {
     0: 'No se pudo contactar con la API de Meta (red). Suele ser pasajero.',
     401: 'El token de Meta ya no vale. Regenerarlo con un System User (ver SETUP.md).',
-    403: 'Al token de Meta le falta el permiso ads_read, o se agoto el rate limit.',
+    403: 'Al token de Meta le falta el permiso ads_read, el System User no tiene ' +
+         'asignada alguna de las cuentas de META_AD_ACCOUNT_ID (p. ej. EASY_04), o se ' +
+         'agoto el rate limit.',
     429: 'Rate limit de Meta agotado tras varios reintentos.',
   },
 };

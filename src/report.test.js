@@ -156,3 +156,32 @@ test('parseFunnelResponse falla con los parseErrors de ShopifyQL', () => {
 test('la consulta ShopifyQL pide solo el dia del reporte', () => {
   assert.match(FUNNEL_SHOPIFYQL('2026-11-15'), /FROM sessions SHOW .* SINCE 2026-11-15 UNTIL 2026-11-15$/);
 });
+
+// --- Varias cuentas de Meta (EASY_02 + EASY_04) -------------------------------
+
+test('META_AD_ACCOUNT_ID acepta varias cuentas, con o sin act_ y con espacios', async () => {
+  const { parseAdAccountIds } = await import('./config.js');
+  assert.deepEqual(parseAdAccountIds('111, act_222 ,,111'), ['111', '222']);
+  assert.deepEqual(parseAdAccountIds('111'), ['111']);
+});
+
+test('el gasto de las dos cuentas se suma y se desglosa por cuenta', () => {
+  const metrics = calculateMetrics([
+    { account_name: 'EASY_02', spend: 100, impressions: 1000, clicks: 50, actions_link_click: 40 },
+    { account_name: 'EASY_04', spend: 50.5, impressions: 500, clicks: 20, actions_link_click: 10 },
+  ], [], 1);
+  assert.equal(metrics.adSpend, 150.5);
+  assert.equal(metrics.impressions, 1500);
+  assert.equal(metrics.linkClicks, 50);
+  assert.deepEqual(metrics.spendByAccount, [
+    { name: 'EASY_02', spend: 100 }, { name: 'EASY_04', spend: 50.5 },
+  ]);
+  const texto = formatReport({ date: '2026-11-24', metrics, diagnosis: DIAGNOSTICO, hoursSettled: 11 });
+  assert.ok(texto.includes('EASY_02: $100,00 | EASY_04: $50,50'));
+});
+
+test('con una sola cuenta no se muestra desglose', () => {
+  const metrics = calculateMetrics([{ account_name: 'EASY_02', spend: 100 }], [], 1);
+  const texto = formatReport({ date: '2026-11-24', metrics, diagnosis: DIAGNOSTICO, hoursSettled: 11 });
+  assert.ok(!texto.includes('EASY_02:'));
+});

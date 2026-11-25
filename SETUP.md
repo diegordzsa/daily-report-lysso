@@ -12,7 +12,7 @@ otro repo. Si algo de aqui cambia, hay que volver a medirlo, no adivinarlo.
 
 | Dato | Valor | Como se midio |
 |---|---|---|
-| Cuenta Meta | `EASY_02` | `GET /act_<id>?fields=name` |
+| Cuentas Meta | `EASY_02` + `EASY_04` (desde nov-2026, mismo BM *Radio Midlands*) | `GET /act_<id>?fields=name` |
 | TZ cuenta Meta | `Europe/Madrid` (**con DST**) | `timezone_name` |
 | Offset en verano | UTC+2 | `timezone_offset_hours_utc` |
 | Moneda Meta | **USD** | `currency` |
@@ -326,11 +326,28 @@ Son **7**, en *Settings > Secrets and variables > Actions*:
 |---|---|
 | `STORE_NAME` | Nombre que aparece en el reporte |
 | `META_ACCESS_TOKEN` | Token de System User (no expira). Permiso `ads_read` |
-| `META_AD_ACCOUNT_ID` | Numerico, sin el prefijo `act_` |
+| `META_AD_ACCOUNT_ID` | Numerico, sin `act_`. **Varias cuentas separadas por coma** (`<id EASY_02>,<id EASY_04>`) |
 | `SHOPIFY_STORE_DOMAIN` | `xxx.myshopify.com` |
 | `SHOPIFY_ACCESS_TOKEN` | Token **offline** (`shpat_...`), ver abajo |
 | `ANTHROPIC_API_KEY` | `sk-ant-api03-...` |
 | `SLACK_WEBHOOK_URL` | Incoming webhook del canal `#reporte-diario-lysso` |
+
+### Varias cuentas de Meta (EASY_02 + EASY_04)
+
+El reporte suma el gasto, impresiones, clicks y eventos del pixel de **todas** las
+cuentas de `META_AD_ACCOUNT_ID`. Con mas de una, debajo del gasto sale el desglose
+por cuenta. Reglas:
+
+- **El System User del token tiene que tener asignada cada cuenta** (Business
+  Settings > Usuarios del sistema > Asignar activos > Cuentas publicitarias, con
+  permiso de ver rendimiento). Que una persona tenga acceso no basta. Si falta, el
+  reporte falla con `403` en vez de publicar la mitad del gasto.
+- Todas tienen que facturar en la **misma moneda** (`AD_CURRENCY_CODE`). Si no, el
+  reporte no se publica y avisa: sumar USD con EUR da un numero sin unidad.
+- La frescura la marca la cuenta que cierra el dia **mas tarde**.
+- Para sacar el id de una cuenta nueva y comprobar que el token la ve:
+  `gh workflow run meta-freshness-probe.yml --ref main`. El log empieza con la
+  lista de cuentas visibles (`nombre | id | moneda | tz`).
 
 ### Sobre el token de Shopify
 

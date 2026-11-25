@@ -94,6 +94,7 @@ jobs:
           # --- Requeridas (configurar en Settings > Secrets) ---
           STORE_NAME: ${{ secrets.STORE_NAME }}
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          # Una o varias cuentas separadas por coma: EASY_02,EASY_04 (ids numericos).
           META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
           SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
